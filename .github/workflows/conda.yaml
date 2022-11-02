@@ -76,6 +76,11 @@ jobs:
         mamba env update -n ros-rolling-ws -f .github/ci/environment.win-64.yaml
       if: contains(matrix.os, 'windows') && steps.cache.outputs.cache-hit != 'true'
 
+    - name: Linux-only Dependencies [Linux]
+      run: |
+        mamba env update -n ros-rolling-ws -f .github/ci/environment.linux-64.yaml
+      if: contains(matrix.os, 'ubuntu') && steps.cache.outputs.cache-hit != 'true'
+
     - name: Export compiler variables [Linux]
       if: contains(matrix.os, 'ubuntu')
       shell: bash -l {0}
