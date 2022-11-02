@@ -4,10 +4,18 @@ channels:
   - conda-forge
 
 dependencies:
+  # Build tools
   - cmake
   - colcon-common-extensions
   - compilers
   - git
   - ninja
+  - patch
   - pkg-config
   - vcstool
+  # ROS 2 deps
+  - asio
+  - eigen
+  - pybind11
+  - tinyxml
+  - tinyxml2
