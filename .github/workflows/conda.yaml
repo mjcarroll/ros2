@@ -28,7 +28,7 @@ jobs:
     env:
       # Workspace file to use for the build
       VCS_WORKSPACE_FILE: ros2.repos
-      COLCON_BUILD_ARGS: ""
+      COLCON_BUILD_ARGS: "--cmake-args -DINSTALL_EXAMPLES=OFF -DSECURITY=ON -DAPPEND_PROJECT_NAME_TO_INCLUDEDIR=ON"
       COLCON_TEST_ARGS: ""
 
       # Things that control build
@@ -80,7 +80,7 @@ jobs:
       run: |
         echo "::group::Install colcon extensions"
         # Make output prettier for github
-        python -m pip install --upgrade --force https://github.com/mjcarroll/colcon-github-actions/archive/refs/heads/master.zip
+        python3 -m pip install --upgrade --force https://github.com/mjcarroll/colcon-github-actions/archive/refs/heads/master.zip
         echo "::endgroup::"
 
     - name: Export compiler variables [Linux]
