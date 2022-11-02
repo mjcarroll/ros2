@@ -7,3 +7,4 @@ dependencies:
   - elfutils
   - libacl
   - patch
+  - sysroot_linux-64=2.17
