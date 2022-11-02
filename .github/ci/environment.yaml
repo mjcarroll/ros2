@@ -10,7 +10,6 @@ dependencies:
   - compilers
   - git
   - ninja
-  - patch
   - pkg-config
   - vcstool
   # ROS 2 deps

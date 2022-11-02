@@ -28,7 +28,7 @@ jobs:
     env:
       # Workspace file to use for the build
       VCS_WORKSPACE_FILE: ros2.repos
-      COLCON_BUILD_ARGS: "--cmake-args -DINSTALL_EXAMPLES=OFF -DSECURITY=ON -DAPPEND_PROJECT_NAME_TO_INCLUDEDIR=ON"
+      COLCON_BUILD_ARGS: ""
       COLCON_TEST_ARGS: ""
 
       # Things that control build
