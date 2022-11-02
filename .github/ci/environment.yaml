@@ -5,6 +5,7 @@ channels:
 
 dependencies:
   - cmake
+  - colcon-common-extensions
   - compilers
   - git
   - ninja
