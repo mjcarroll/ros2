@@ -76,13 +76,6 @@ jobs:
         mamba env update -n ros-rolling-ws -f .github/ci/environment.win-64.yaml
       if: contains(matrix.os, 'windows') && steps.cache.outputs.cache-hit != 'true'
 
-    - name: Colcon dependencies [Linux and macOS]
-      run: |
-        echo "::group::Install colcon extensions"
-        # Make output prettier for github
-        python3 -m pip install --upgrade --force https://github.com/mjcarroll/colcon-github-actions/archive/refs/heads/master.zip
-        echo "::endgroup::"
-
     - name: Export compiler variables [Linux]
       if: contains(matrix.os, 'ubuntu')
       shell: bash -l {0}
@@ -132,4 +125,7 @@ jobs:
       shell: cmd /C call {0}
       run: |
         cd workspace
+        echo "::group::Workspace Branches"
+        vcs branch
+        echo "::endgroup::"
         colcon build ${{ env.COLCON_BUILD_ARGS }}

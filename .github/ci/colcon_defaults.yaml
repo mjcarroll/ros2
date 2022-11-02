@@ -4,8 +4,6 @@
     "event-handlers": [
       "console_package_list+",
       "console_cohesion+",
-      "console_start_end-",
-      "actions_start_end+",
     ],
     "cmake-args": [
       "-GNinja",
@@ -20,8 +18,6 @@
     "merge-install": true,
     "event-handlers": [
       "console_cohesion+",
-      "console_start_end-",
-      "actions_start_end+",
     ],
     "executor": "sequential",
   }
