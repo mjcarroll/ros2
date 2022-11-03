@@ -92,6 +92,11 @@ jobs:
       if: contains(matrix.os, 'macos')
       shell: bash -l {0}
       run: |
+        echo $PATH
+        ls /usr/local/miniconda
+        ls /usr/local/miniconda/envs
+        which python
+        which python3
         echo "BUILDCACHE_CC=x86_64-apple-darwin13.4.0-clang" >> $GITHUB_ENV
         echo "BUILDCACHE_CXX=x86_64-apple-darwin13.4.0-clang++" >> $GITHUB_ENV
 
