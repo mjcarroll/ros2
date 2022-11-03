@@ -17,6 +17,9 @@ dependencies:
   - benchmark
   - catkin_pkg
   - eigen
+  - freetype
+  - freeimage
   - pybind11
+  - qt-main
   - tinyxml
   - tinyxml2
