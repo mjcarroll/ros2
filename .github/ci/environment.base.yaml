@@ -8,6 +8,7 @@ dependencies:
   - colcon-common-extensions
   - compilers
   - git
+  - make
   - ninja
   - pkg-config
   - vcstool

@@ -7,6 +7,7 @@ dependencies:
   - patch
   - sysroot_linux-64=2.17   # Ensure cos7 is installed
   # Recommended packages from robostack for GL
+  - xorg-x11-proto-devel-cos7-x86_64
   - mesa-libgl-devel-cos7-x86_64
   - mesa-dri-drivers-cos7-x86_64
   - libselinux-cos7-x86_64
@@ -16,10 +17,8 @@ dependencies:
   - libxrandr-cos7-x86_64
   - libxrender-devel-cos7-x86_64
   - libxrandr-devel-cos7-x86_64
-  - xorg-x11-proto-devel-cos7-x86_64
   - xorg-libxfixes
   - libglu
   - xorg-libx11
   - xorg-libxaw
   - xorg-libxt
-

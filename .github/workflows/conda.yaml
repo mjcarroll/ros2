@@ -71,6 +71,9 @@ jobs:
         mamba env update -n ros-ws -f .github/ci/environment.linux-64.yaml
       if: contains(matrix.os, 'ubuntu') && steps.cache.outputs.cache-hit != 'true'
 
+    - name: Conda Export 
+      run: mamba env export -n ros-ws -f
+
     - name: Export compiler variables
       shell: bash -l {0}
       run: |

@@ -13,3 +13,9 @@ dependencies:
   - qt-main
   - tinyxml
   - tinyxml2
+  - pugixml
+  - zlib
+  - zziplib
+  - sdl2
+  - numpy
+  - swig
