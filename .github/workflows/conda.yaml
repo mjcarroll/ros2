@@ -14,13 +14,7 @@ jobs:
         include:
           - os: ubuntu-latest
             label: linux-64
-            conda_envs: /usr/share/miniconda/envs/ros-rolling-ws
-          - os: macos-latest
-            label: macos-64
-            conda_envs: /usr/local/miniconda/envs/ros-rolling-ws
-          - os: windows-2019
-            label: win-64
-            conda_envs: C:\Miniconda\envs\ros-rolling-ws
+            conda_envs: /usr/share/miniconda/envs/ros-ws
       fail-fast: false
 
     name: '[${{ matrix.label }}@conda]'
@@ -44,15 +38,15 @@ jobs:
         mamba-version: "*"
         channels: conda-forge
         channel-priority: true
-        activate-environment: ros-rolling-ws
+        activate-environment: ros-ws
 
     - name: Get Date
       id: get-date
-      run: echo "::set-output name=today::$(/bin/date -u '+%Y%m%d')"
+      run: echo "today=$(/bin/date -u '+%Y%m%d')" >> $GITHUB_OUTPUT
       shell: bash
 
     - name: Cache conda
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: ${{ matrix.conda_envs }}
         key: ${{ runner.os }}-conda-${{ hashFiles('.github/ci/environment*.yaml') }}-${{ steps.get-date.outputs.today }}-${{ env.CACHE_NUMBER }}
@@ -68,40 +62,22 @@ jobs:
       run: |
         # Workaround for https://github.com/conda-incubator/setup-miniconda/issues/186
         conda config --remove channels defaults
-        mamba env update -n ros-rolling-ws -f .github/ci/environment.yaml
+        mamba env update -n ros-ws -f .github/ci/environment.base.yaml
+        mamba env update -n ros-ws -f .github/ci/environment.yaml
       if: steps.cache.outputs.cache-hit != 'true'
-
-    - name: Windows-only Dependencies [Windows]
-      run: |
-        mamba env update -n ros-rolling-ws -f .github/ci/environment.win-64.yaml
-      if: contains(matrix.os, 'windows') && steps.cache.outputs.cache-hit != 'true'
 
     - name: Linux-only Dependencies [Linux]
       run: |
-        mamba env update -n ros-rolling-ws -f .github/ci/environment.linux-64.yaml
+        mamba env update -n ros-ws -f .github/ci/environment.linux-64.yaml
       if: contains(matrix.os, 'ubuntu') && steps.cache.outputs.cache-hit != 'true'
 
-    - name: Export compiler variables [Linux]
-      if: contains(matrix.os, 'ubuntu')
+    - name: Export compiler variables
       shell: bash -l {0}
       run: |
         echo "BUILDCACHE_CC=x86_64-conda-linux-gnu-gcc" >> $GITHUB_ENV
         echo "BUILDCACHE_CXX=x86_64-conda-linux-gnu-g++" >> $GITHUB_ENV
 
-    - name: Export compiler variables [macOS]
-      if: contains(matrix.os, 'macos')
-      shell: bash -l {0}
-      run: |
-        echo $PATH
-        ls /usr/local/miniconda
-        ls /usr/local/miniconda/envs
-        which python
-        which python3
-        echo "BUILDCACHE_CC=x86_64-apple-darwin13.4.0-clang" >> $GITHUB_ENV
-        echo "BUILDCACHE_CXX=x86_64-apple-darwin13.4.0-clang++" >> $GITHUB_ENV
-
-    - name: Checkout Workspace [Linux&macOS]
-      if: contains(matrix.os, 'macos') || contains(matrix.os, 'ubuntu')
+    - name: Checkout Workspace
       shell: bash -l {0}
       run: |
         mkdir -p workspace/src
@@ -109,31 +85,11 @@ jobs:
         vcs import --input ${{ env.VCS_WORKSPACE_FILE }} --shallow workspace/src
         echo "::endgroup::"
 
-    - name: Build Workspace [Linux&macOS]
-      if: (contains(matrix.os, 'macos') || contains(matrix.os, 'ubuntu')) && success()
+    - name: Build Workspace
       shell: bash -l {0}
       run: |
         export CC=${{ env.BUILDCACHE_CC }}
         export CXX=${{ env.BUILDCACHE_CXX }}
-        cd workspace
-        echo "::group::Workspace Branches"
-        vcs branch
-        echo "::endgroup::"
-        colcon build ${{ env.COLCON_BUILD_ARGS }}
-
-    - name: Checkout Workspace [Windows]
-      if: contains(matrix.os, 'windows')
-      shell: cmd /C call {0}
-      run: |
-        mkdir workspace\src
-        echo "::group::vcs import"
-        vcs import --input ${{ env.VCS_WORKSPACE_FILE }} --shallow workspace\src
-        echo "::endgroup::"
-
-    - name: Build Workspace [Windows]
-      if: contains(matrix.os, 'windows') && success()
-      shell: cmd /C call {0}
-      run: |
         cd workspace
         echo "::group::Workspace Branches"
         vcs branch

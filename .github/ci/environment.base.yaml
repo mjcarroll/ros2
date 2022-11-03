@@ -1,0 +1,13 @@
+name: ros-ws
+channels:
+  - conda-forge
+dependencies:
+  # Build tools
+  - catkin_pkg
+  - cmake
+  - colcon-common-extensions
+  - compilers
+  - git
+  - ninja
+  - pkg-config
+  - vcstool

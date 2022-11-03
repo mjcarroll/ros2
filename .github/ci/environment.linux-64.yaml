@@ -1,10 +1,25 @@
-name: ros-rolling-ws
-
+name: ros-ws
 channels:
   - conda-forge
-
 dependencies:
   - elfutils
   - libacl
   - patch
-  - sysroot_linux-64=2.17
+  - sysroot_linux-64=2.17   # Ensure cos7 is installed
+  # Recommended packages from robostack for GL
+  - mesa-libgl-devel-cos7-x86_64
+  - mesa-dri-drivers-cos7-x86_64
+  - libselinux-cos7-x86_64
+  - libxdamage-cos7-x86_64
+  - libxxf86vm-cos7-x86_64
+  - libxext-cos7-x86_64
+  - libxrandr-cos7-x86_64
+  - libxrender-devel-cos7-x86_64
+  - libxrandr-devel-cos7-x86_64
+  - xorg-x11-proto-devel-cos7-x86_64
+  - xorg-libxfixes
+  - libglu
+  - xorg-libx11
+  - xorg-libxaw
+  - xorg-libxt
+

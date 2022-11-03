@@ -1,25 +1,14 @@
-name: ros-rolling-ws
-
+name: ros-ws
 channels:
   - conda-forge
-
 dependencies:
-  # Build tools
-  - cmake
-  - colcon-common-extensions
-  - compilers
-  - git
-  - ninja
-  - pkg-config
-  - vcstool
-  # ROS 2 deps
   - asio
   - benchmark
-  - catkin_pkg
   - eigen
   - freetype
   - freeimage
   - pybind11
+  - pyqt5-sip
   - qt-main
   - tinyxml
   - tinyxml2
