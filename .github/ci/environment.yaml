@@ -7,7 +7,7 @@ dependencies:
   - eigen
   - freetype
   - freeimage
-  - openexr
+  - openexr=2.5.5
   - pybind11
   - pyqt5-sip
   - qt-main
