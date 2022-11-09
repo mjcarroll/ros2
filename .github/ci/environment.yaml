@@ -19,3 +19,4 @@ dependencies:
   - sdl2
   - numpy
   - swig
+  - sip
