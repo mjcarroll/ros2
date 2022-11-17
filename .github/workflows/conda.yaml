@@ -97,4 +97,4 @@ jobs:
         echo "::group::Workspace Branches"
         vcs branch
         echo "::endgroup::"
-        colcon build ${{ env.COLCON_BUILD_ARGS }}
+        colcon build --continue-on-error 
