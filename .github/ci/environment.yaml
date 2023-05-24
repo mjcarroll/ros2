@@ -1,0 +1,22 @@
+name: ros-ws
+channels:
+  - conda-forge
+dependencies:
+  - asio
+  - benchmark
+  - eigen
+  - freetype
+  - freeimage
+  - openexr=2.5.5
+  - pybind11
+  - pyqt5-sip
+  - qt-main
+  - tinyxml
+  - tinyxml2
+  - pugixml
+  - zlib
+  - zziplib
+  - sdl2
+  - numpy
+  - swig
+  - sip
