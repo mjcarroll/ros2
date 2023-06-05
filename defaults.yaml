@@ -1,0 +1,10 @@
+{
+  "build": {
+    "cmake-args": [
+      "-GNinja",
+      "--no-warn-unused-cli",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+    ]
+  },
+}

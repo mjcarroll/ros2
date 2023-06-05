@@ -10,6 +10,7 @@ dependencies:
   - openexr=2.5.5
   - pybind11
   - pyqt5-sip
+  - pyside2
   - qt-main
   - tinyxml
   - tinyxml2
