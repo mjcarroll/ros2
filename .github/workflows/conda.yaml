@@ -95,4 +95,4 @@ jobs:
         echo "::group::Workspace Branches"
         vcs branch
         echo "::endgroup::"
-        colcon build --continue-on-error --packages-up-to rclcpp
+        colcon build --continue-on-error
