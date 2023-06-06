@@ -16,7 +16,7 @@ jobs:
             label: linux
           - os: macos-latest
             label: macos
-          - os: windows-latest
+          - os: windows-2019
             label: win-64
       fail-fast: false
 

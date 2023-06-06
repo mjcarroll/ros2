@@ -8,7 +8,9 @@ dependencies:
   - colcon-common-extensions
   - compilers
   - git
+  - lark
   - make
   - ninja
   - pkg-config
+  - pytest
   - vcstool
