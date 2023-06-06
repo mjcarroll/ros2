@@ -33,4 +33,3 @@ RUN . ${HOME}/.profile && mamba activate ros-ws && \
 
 ADD .github/ci/colcon_defaults.yaml /root/colcon_defaults.yaml
 ADD setup.sh /root/setup.sh
-ADD defaults.yaml /root/defaults.yaml

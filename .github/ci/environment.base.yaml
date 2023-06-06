@@ -7,9 +7,7 @@ dependencies:
   - cmake
   - colcon-common-extensions
   - compilers
-  - cryptography=38.0.4
   - git
-  - lark
   - make
   - ninja
   - pkg-config
