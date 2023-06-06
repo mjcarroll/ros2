@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: windows-2019
+          - os: windows-2022
             label: win-64
       fail-fast: false
 
