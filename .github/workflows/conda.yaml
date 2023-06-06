@@ -1,7 +1,6 @@
 name: CI with conda-forge dependencies
 
 on:
-  push:
   pull_request:
 
 env:
