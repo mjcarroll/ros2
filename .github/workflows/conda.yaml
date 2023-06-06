@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: windows-2019
+          - os: windows-2022
             label: win-64
       fail-fast: false
 
@@ -85,8 +85,6 @@ jobs:
     - name: Build Workspace
       shell: bash -l {0}
       run: |
-        export CC=${{ env.BUILDCACHE_CC }}
-        export CXX=${{ env.BUILDCACHE_CXX }}
         cd workspace
         echo "::group::Workspace Branches"
         vcs branch
