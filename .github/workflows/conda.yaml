@@ -62,12 +62,11 @@ jobs:
         conda config --remove channels defaults
         mamba env update -n ros-ws -f .github/ci/environment.base.yaml
         mamba env update -n ros-ws -f .github/ci/environment.yaml
-      if: steps.cache.outputs.cache-hit != 'true'
 
     - name: Linux-only Dependencies [Linux]
       run: |
         mamba env update -n ros-ws -f .github/ci/environment.linux-64.yaml
-      if: contains(matrix.os, 'ubuntu') && steps.cache.outputs.cache-hit != 'true'
+      if: contains(matrix.os, 'ubuntu')
 
     - name: Conda Export
       run: mamba env export -n ros-ws
