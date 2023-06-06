@@ -56,13 +56,15 @@ jobs:
         upload_buildcache_log: true # optional: 100% cache misses? Find out why
         zero_buildcache_stats: true # optional: lifetime vs per-run stats?
 
+    - name: Conda Export
+      run: mamba env export -n ros-ws
+
     - name: Dependencies
       run: |
         # Workaround for https://github.com/conda-incubator/setup-miniconda/issues/186
         conda config --remove channels defaults
         mamba env update -n ros-ws -f .github/ci/environment.base.yaml
         mamba env update -n ros-ws -f .github/ci/environment.yaml
-      if: steps.cache.outputs.cache-hit != 'true'
 
     - name: Windows-only Dependencies [Windows]
       run: |

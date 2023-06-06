@@ -7,4 +7,3 @@ mamba activate ros-ws
 
 export COLCON_DEFAULTS_FILE=/root/colcon_defaults.yaml
 export PATH=/root/buildcache/bin:$PATH
-export COLCON_DEFAULTS_FILE=/root/defaults.yaml

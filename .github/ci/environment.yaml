@@ -5,9 +5,12 @@ dependencies:
   - asio
   - benchmark
   - bullet
+  - cryptography=38.0.4
   - eigen
   - freetype
   - freeimage
+  - lark
+  - lxml
   - opencv
   - openexr=2.5.5
   - pybind11
