@@ -9,8 +9,6 @@
       "-GNinja",
       "--no-warn-unused-cli",
       "-DCMAKE_BUILD_TYPE=Release",
-      "-DCMAKE_C_COMPILER_LAUNCHER=buildcache",
-      "-DCMAKE_CXX_COMPILER_LAUNCHER=buildcache",
       "-DINSTALL_EXAMPLES=OFF",
       "-DSECURITY=ON",
       "-DAPPEND_PROJECT_NAME_TO_INCLUDEDIR=ON",
