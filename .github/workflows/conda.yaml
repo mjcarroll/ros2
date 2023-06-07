@@ -33,6 +33,7 @@ jobs:
         channels: conda-forge
         channel-priority: true
         activate-environment: ros-ws
+    - uses: ilammy/msvc-dev-cmd@v1
 
     - name: Get Date
       id: get-date
@@ -65,15 +66,14 @@ jobs:
       run: mamba env export -n ros-ws
 
     - name: Checkout Workspace
-      shell: bash -l {0}
       run: |
-        mkdir -p workspace/src
+        mkdir workspace\src
         echo "::group::vcs import"
         vcs import --input ${{ env.VCS_WORKSPACE_FILE }} --shallow workspace/src
         echo "::endgroup::"
 
+
     - name: Build Workspace
-      shell: bash -l {0}
       run: |
         cd workspace
         echo "::group::Workspace Branches"
