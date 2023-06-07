@@ -22,3 +22,4 @@ dependencies:
   - xorg-libx11
   - xorg-libxaw
   - xorg-libxt
+  - lttng-ust

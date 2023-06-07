@@ -2,5 +2,4 @@ name: ros-ws
 channels:
   - conda-forge
 dependencies:
-  - vs2019_win-64
   - openssl=1.1.1

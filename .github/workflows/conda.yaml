@@ -1,7 +1,6 @@
 name: CI with conda-forge dependencies
 
 on:
-  push:
   pull_request:
 
 env:
@@ -13,8 +12,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            label: linux-64
-            conda_envs: /usr/share/miniconda/envs/ros-ws
+            label: linux
       fail-fast: false
 
     name: '[${{ matrix.label }}@conda]'
@@ -48,7 +46,7 @@ jobs:
     - name: Cache conda
       uses: actions/cache@v3
       with:
-        path: ${{ matrix.conda_envs }}
+        path: ~/conda_pkgs_dir
         key: ${{ runner.os }}-conda-${{ hashFiles('.github/ci/environment*.yaml') }}-${{ steps.get-date.outputs.today }}-${{ env.CACHE_NUMBER }}
       id: cache
 
@@ -64,21 +62,21 @@ jobs:
         conda config --remove channels defaults
         mamba env update -n ros-ws -f .github/ci/environment.base.yaml
         mamba env update -n ros-ws -f .github/ci/environment.yaml
-      if: steps.cache.outputs.cache-hit != 'true'
 
     - name: Linux-only Dependencies [Linux]
       run: |
         mamba env update -n ros-ws -f .github/ci/environment.linux-64.yaml
-      if: contains(matrix.os, 'ubuntu') && steps.cache.outputs.cache-hit != 'true'
+      if: contains(matrix.os, 'ubuntu')
 
     - name: Conda Export
       run: mamba env export -n ros-ws
 
-    - name: Export compiler variables
+    - name: Export compiler variables [Linux]
       shell: bash -l {0}
       run: |
         echo "BUILDCACHE_CC=x86_64-conda-linux-gnu-gcc" >> $GITHUB_ENV
         echo "BUILDCACHE_CXX=x86_64-conda-linux-gnu-g++" >> $GITHUB_ENV
+      if: contains(matrix.os, 'ubuntu')
 
     - name: Checkout Workspace
       shell: bash -l {0}

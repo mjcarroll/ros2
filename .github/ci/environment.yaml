@@ -5,13 +5,17 @@ dependencies:
   - asio
   - benchmark
   - bullet
+  - cryptography=38.0.4
   - eigen
   - freetype
   - freeimage
+  - lark
+  - lxml
   - opencv
   - openexr=2.5.5
   - pybind11
   - pyqt5-sip
+  - pyside2
   - qt-main
   - tinyxml
   - tinyxml2
