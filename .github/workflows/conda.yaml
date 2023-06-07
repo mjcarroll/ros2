@@ -60,7 +60,7 @@ jobs:
     - name: Windows-only Dependencies [Windows]
       run: |
         mamba env update -n ros-ws -f .github/ci/environment.win-64.yaml
-      if: contains(matrix.os, 'windows') && steps.cache.outputs.cache-hit != 'true'
+      if: contains(matrix.os, 'windows')
 
     - name: Conda Export
       run: mamba env export -n ros-ws
