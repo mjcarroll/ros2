@@ -13,6 +13,7 @@ dependencies:
   - lxml
   - opencv
   - openexr=2.5.5
+  - openssl=1.1.1
   - pybind11
   - pyqt5-sip
   - pyside2
