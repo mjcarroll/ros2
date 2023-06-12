@@ -11,8 +11,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            label: linux
+          - os: windows-2022
+            label: win-64
       fail-fast: false
 
     name: '[${{ matrix.label }}@conda]'
@@ -25,10 +25,6 @@ jobs:
 
       # Things that control build
       COLCON_DEFAULTS_FILE: ${{ github.workspace }}/.github/ci/colcon_defaults.yaml
-      BUILDCACHE_MAX_CACHE_SIZE: 2000000000                      # optional: Need a bigger cache?
-      # BUILDCACHE_LOG_FILE: ${{ matrix.label }}.buildcache.log    # optional: include log output
-      # BUILDCACHE_DEBUG: 2                                        # optional: debug level, less is more
-      BUILDCACHE_DIRECT_MODE: true                               # optional: Allow direct caching
     steps:
     - uses: actions/checkout@v2
     - uses: conda-incubator/setup-miniconda@v2
@@ -37,6 +33,7 @@ jobs:
         channels: conda-forge
         channel-priority: true
         activate-environment: ros-ws
+    - uses: ilammy/msvc-dev-cmd@v1
 
     - name: Get Date
       id: get-date
@@ -50,11 +47,8 @@ jobs:
         key: ${{ runner.os }}-conda-${{ hashFiles('.github/ci/environment*.yaml') }}-${{ steps.get-date.outputs.today }}-${{ env.CACHE_NUMBER }}
       id: cache
 
-    - uses: mikehardy/buildcache-action@v1
-      with:
-        cache_key: ${{ matrix.label }}-${{ steps.get-date.outputs.today }}-${{ env.CACHE_NUMBER }}
-        upload_buildcache_log: true # optional: 100% cache misses? Find out why
-        zero_buildcache_stats: true # optional: lifetime vs per-run stats?
+    - name: Conda Export
+      run: mamba env export -n ros-ws
 
     - name: Dependencies
       run: |
@@ -63,36 +57,28 @@ jobs:
         mamba env update -n ros-ws -f .github/ci/environment.base.yaml
         mamba env update -n ros-ws -f .github/ci/environment.yaml
 
-    - name: Linux-only Dependencies [Linux]
+    - name: Windows-only Dependencies [Windows]
       run: |
-        mamba env update -n ros-ws -f .github/ci/environment.linux-64.yaml
-      if: contains(matrix.os, 'ubuntu')
+        mamba env update -n ros-ws -f .github/ci/environment.win-64.yaml
+      if: contains(matrix.os, 'windows')
 
     - name: Conda Export
       run: mamba env export -n ros-ws
 
-    - name: Export compiler variables [Linux]
-      shell: bash -l {0}
-      run: |
-        echo "BUILDCACHE_CC=x86_64-conda-linux-gnu-gcc" >> $GITHUB_ENV
-        echo "BUILDCACHE_CXX=x86_64-conda-linux-gnu-g++" >> $GITHUB_ENV
-      if: contains(matrix.os, 'ubuntu')
-
     - name: Checkout Workspace
-      shell: bash -l {0}
+      shell: cmd /C call {0}
       run: |
-        mkdir -p workspace/src
+        mkdir workspace\src
         echo "::group::vcs import"
         vcs import --input ${{ env.VCS_WORKSPACE_FILE }} --shallow workspace/src
         echo "::endgroup::"
 
+
     - name: Build Workspace
-      shell: bash -l {0}
+      shell: cmd /C call {0}
       run: |
-        export CC=${{ env.BUILDCACHE_CC }}
-        export CXX=${{ env.BUILDCACHE_CXX }}
         cd workspace
         echo "::group::Workspace Branches"
         vcs branch
         echo "::endgroup::"
-        colcon build --continue-on-error
+        colcon build --continue-on-error --packages-up-to rclcpp
