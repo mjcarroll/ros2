@@ -98,6 +98,23 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
 
+      # The pixi environment ships GNU coreutils' link.exe under
+      # Library/usr/bin (it comes with the git package), and pixi activation
+      # puts that ahead of the MSVC tools on PATH.  CMake is unaffected because
+      # it resolves an absolute CMAKE_LINKER at configure time, but cargo looks
+      # up link.exe by name, so zenoh_cpp_vendor links with coreutils' `link`
+      # and dies with "extra operand".  Point Rust at the real linker.
+      - name: Point Rust at the MSVC linker
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          linker="$(cygpath -u "$VCToolsInstallDir")bin/Hostx64/x64/link.exe"
+          if [ ! -f "$linker" ]; then
+            echo "::error::MSVC linker not found at $linker"
+            exit 1
+          fi
+          echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=$(cygpath -w "$linker")"             >> "$GITHUB_ENV"
+
       - name: Install pixi
         uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347 # v0.10.1
         with:
