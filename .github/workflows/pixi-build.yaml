@@ -52,6 +52,13 @@ jobs:
           - name: linux
             os: ubuntu-latest
             packages-skip: ''
+            # GitHub's Ubuntu runners ship PowerShell, and colcon-powershell
+            # (PRIORITY 300) then outranks colcon-core's sh extension
+            # (PRIORITY 200) as the primary shell.  Its environment hooks
+            # hardcode a backslash separator, so PYTHONPATH is emitted as
+            # 'install\lib/python3.12/site-packages' and nothing downstream
+            # of a Python package can be imported.
+            extension-blocklist: colcon_core.shell.powershell
           # The tracetools packages are LTTng based and are not built on Windows.
           - name: windows
             os: windows-latest
@@ -59,9 +66,11 @@ jobs:
               --packages-skip lttngpy tracetools_trace ros2trace
               tracetools_launch test_ros2trace test_tracetools
               test_tracetools_launch tracetools_test
+            extension-blocklist: ''
     env:
       PACKAGES: ${{ inputs.packages-up-to || 'demo_nodes_cpp demo_nodes_py rosbag2' }}
       PACKAGES_SKIP: ${{ matrix.packages-skip }}
+      COLCON_EXTENSION_BLOCKLIST: ${{ matrix.extension-blocklist }}
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
       # Well under the 10 GB that GitHub allows a repository to cache in total.
       SCCACHE_CACHE_SIZE: 2G
