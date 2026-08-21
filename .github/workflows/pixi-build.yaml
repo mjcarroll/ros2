@@ -59,6 +59,7 @@ jobs:
             # 'install\lib/python3.12/site-packages' and nothing downstream
             # of a Python package can be imported.
             extension-blocklist: colcon_core.shell.powershell
+            workdir: '.'
           # The tracetools packages are LTTng based and are not built on Windows.
           - name: windows
             os: windows-latest
@@ -67,6 +68,7 @@ jobs:
               tracetools_launch test_ros2trace test_tracetools
               test_tracetools_launch tracetools_test
             extension-blocklist: ''
+            workdir: 'W:\'
     env:
       PACKAGES: ${{ inputs.packages-up-to || 'demo_nodes_cpp demo_nodes_py rosbag2' }}
       PACKAGES_SKIP: ${{ matrix.packages-skip }}
@@ -79,6 +81,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # Build from a substituted drive so that every absolute path baked into
+      # the build -- and so into sccache's hashes -- is the same here as it is
+      # on a developer's machine, instead of depending on where the runner
+      # happened to check the workspace out.  It also buys back the thirteen
+      # characters of MAX_PATH that 'D:\a\ros2\ros2' costs over 'W:'.
+      - name: Map the workspace onto a substituted drive
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          if not exist W:\ subst W: "%GITHUB_WORKSPACE%"
+          dir W:\
 
       # ament and rosidl generate deeply nested paths that overrun MAX_PATH.
       # The ros2/ci Windows images do the same thing.
@@ -118,6 +132,7 @@ jobs:
             sccache-${{ matrix.name }}-
 
       - name: Install the pixi environment
+        working-directory: ${{ matrix.workdir }}
         run: pixi install --color never
 
       # Two copies of GNU coreutils' link.exe end up ahead of the MSVC tools
@@ -131,6 +146,7 @@ jobs:
       # path are not valid TOML.  Nothing in a ROS 2 build wants coreutils'
       # link, so take both out of the way.
       - name: Disable the coreutils link.exe
+        working-directory: ${{ matrix.workdir }}
         if: runner.os == 'Windows'
         shell: bash
         run: |
@@ -147,16 +163,19 @@ jobs:
           echo "link.exe now resolves to: $(command -v link.exe || echo 'nothing')"
 
       - name: Import the ROS 2 sources
+        working-directory: ${{ matrix.workdir }}
         shell: bash
         run: |
           mkdir -p src
           pixi run vcs import --input ros2.repos --shallow --workers 8 src
 
       - name: Report available disk space
+        working-directory: ${{ matrix.workdir }}
         shell: bash
         run: df -h .
 
       - name: Build
+        working-directory: ${{ matrix.workdir }}
         shell: bash
         run: |
           pixi run colcon build \
@@ -177,6 +196,7 @@ jobs:
               -Wno-deprecated
 
       - name: Test
+        working-directory: ${{ matrix.workdir }}
         if: inputs.run-tests
         shell: bash
         run: |
@@ -188,6 +208,7 @@ jobs:
           pixi run colcon test-result --verbose
 
       - name: Report compiler cache statistics
+        working-directory: ${{ matrix.workdir }}
         if: always()
         continue-on-error: true
         shell: bash
