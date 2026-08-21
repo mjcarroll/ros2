@@ -125,6 +125,18 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
 
+      # Defender scans every object file, library and Rust rlib as it is
+      # written, which is a lot of synchronous I/O across a build of this
+      # shape.  The runner is ephemeral and builds only what this workflow
+      # checked out, so exclude the workspace.
+      - name: Exclude the workspace from Defender
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath '${{ github.workspace }}' -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionPath 'W:' -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionProcess 'cl.exe','link.exe','rustc.exe','sccache.exe' -ErrorAction SilentlyContinue
+
       - name: Install pixi
         uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347 # v0.10.1
         with:
