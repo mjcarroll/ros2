@@ -60,6 +60,7 @@ jobs:
             # of a Python package can be imported.
             extension-blocklist: colcon_core.shell.powershell
             workdir: '.'
+            parallel-workers: '4'
           # The tracetools packages are LTTng based and are not built on Windows.
           - name: windows
             os: windows-latest
@@ -69,6 +70,11 @@ jobs:
               test_tracetools_launch tracetools_test
             extension-blocklist: ''
             workdir: 'W:\'
+            # colcon hands each package 'cmake --build -- -j4 -l4'.
+            # The load average cap does nothing on Windows, so four
+            # packages at a time means up to sixteen compilers on
+            # four vCPUs.
+            parallel-workers: '2'
     env:
       PACKAGES: ${{ inputs.packages-up-to || 'demo_nodes_cpp demo_nodes_py rosbag2' }}
       PACKAGES_SKIP: ${{ matrix.packages-skip }}
@@ -187,6 +193,7 @@ jobs:
         run: |
           pixi run colcon build \
             --merge-install \
+            --parallel-workers ${{ matrix.parallel-workers }} \
             --event-handlers console_cohesion+ \
             --packages-up-to $PACKAGES \
             $PACKAGES_SKIP \
