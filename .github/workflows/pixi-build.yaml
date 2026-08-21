@@ -110,10 +110,10 @@ jobs:
       # package downloads would cost more disk than they save wall clock, and
       # disk is the binding constraint on these runners.
       - name: Restore the compiler cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.sccache
-          key: sccache-${{ matrix.name }}-${{ github.sha }}
+          key: sccache-${{ matrix.name }}-${{ github.run_id }}
           restore-keys: |
             sccache-${{ matrix.name }}-
 
@@ -196,6 +196,16 @@ jobs:
           # Flush the server so the cache directory is consistent when the
           # post-run cache step picks it up.
           pixi run sccache --stop-server
+
+      # actions/cache only saves the cache when the job succeeds, and a build
+      # that fell over partway through has still done real work worth keeping
+      # for the next attempt, so save it explicitly instead.
+      - name: Save the compiler cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: sccache-${{ matrix.name }}-${{ github.run_id }}
 
       - name: Upload colcon logs
         if: failure()
