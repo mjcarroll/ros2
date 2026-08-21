@@ -73,6 +73,13 @@ jobs:
       PACKAGES: ${{ inputs.packages-up-to || 'demo_nodes_cpp demo_nodes_py rosbag2' }}
       PACKAGES_SKIP: ${{ matrix.packages-skip }}
       COLCON_EXTENSION_BLOCKLIST: ${{ matrix.extension-blocklist }}
+      # CMAKE_<LANG>_COMPILER_LAUNCHER only reaches the C and C++ compilers.
+      # zenoh_cpp_vendor builds several hundred Rust crates through cargo,
+      # which was 26 minutes of the Windows build and two thirds of a warm
+      # Linux one, so wrap rustc too.  sccache refuses to cache incremental
+      # compilation, hence CARGO_INCREMENTAL.
+      RUSTC_WRAPPER: sccache
+      CARGO_INCREMENTAL: '0'
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
       # Well under the 10 GB that GitHub allows a repository to cache in total.
       SCCACHE_CACHE_SIZE: 2G
