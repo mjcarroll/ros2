@@ -98,23 +98,6 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
 
-      # The pixi environment ships GNU coreutils' link.exe under
-      # Library/usr/bin (it comes with the git package), and pixi activation
-      # puts that ahead of the MSVC tools on PATH.  CMake is unaffected because
-      # it resolves an absolute CMAKE_LINKER at configure time, but cargo looks
-      # up link.exe by name, so zenoh_cpp_vendor links with coreutils' `link`
-      # and dies with "extra operand".  Point Rust at the real linker.
-      - name: Point Rust at the MSVC linker
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          linker="$(cygpath -u "$VCToolsInstallDir")bin/Hostx64/x64/link.exe"
-          if [ ! -f "$linker" ]; then
-            echo "::error::MSVC linker not found at $linker"
-            exit 1
-          fi
-          echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=$(cygpath -w "$linker")"             >> "$GITHUB_ENV"
-
       - name: Install pixi
         uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347 # v0.10.1
         with:
@@ -136,6 +119,27 @@ jobs:
 
       - name: Install the pixi environment
         run: pixi install --color never
+
+      # The git package drops GNU coreutils' link.exe into Library/usr/bin,
+      # and pixi activation puts that directory ahead of the MSVC tools on
+      # PATH.  CMake is unaffected, since it resolves an absolute CMAKE_LINKER
+      # at configure time, but cargo looks link.exe up by name and zenoh_c
+      # then fails to link with "/usr/bin/link: extra operand".  Setting
+      # CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER is not a way out: zenoh_c
+      # forwards it into a nested cargo --config, where the unescaped
+      # backslashes in the path are not valid TOML.  Nothing in a ROS 2 build
+      # wants coreutils' link, so take it out of the way instead.
+      - name: Disable the coreutils link.exe
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          shadow='.pixi/envs/default/Library/usr/bin/link.exe'
+          if [ -f "$shadow" ]; then
+            mv "$shadow" "$shadow.disabled"
+            echo "Renamed $shadow"
+          else
+            echo "$shadow is not present; nothing to do"
+          fi
 
       - name: Import the ROS 2 sources
         shell: bash
