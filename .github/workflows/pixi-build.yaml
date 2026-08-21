@@ -84,6 +84,14 @@ jobs:
       # which was 26 minutes of the Windows build and two thirds of a warm
       # Linux one, so wrap rustc too.  sccache refuses to cache incremental
       # compilation, hence CARGO_INCREMENTAL.
+      # Passed as environment rather than -D on purpose: CMake initialises
+      # CMAKE_<LANG>_COMPILER_LAUNCHER from the environment variable of the
+      # same name, so this also reaches the nested configures that
+      # ExternalProject_Add and ament_vendor run.  ament_vendor forwards 22
+      # variables to its sub-builds and the launchers are not among them,
+      # so with -D alone every vendor package compiles uncached.
+      CMAKE_C_COMPILER_LAUNCHER: sccache
+      CMAKE_CXX_COMPILER_LAUNCHER: sccache
       RUSTC_WRAPPER: sccache
       CARGO_INCREMENTAL: '0'
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
@@ -214,8 +222,6 @@ jobs:
               --no-warn-unused-cli \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_BUILD_WITH_INSTALL_RPATH:bool=TRUE \
-              -DCMAKE_C_COMPILER_LAUNCHER=sccache \
-              -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
               -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
               -DSTACK_DETAILS_AUTO_DETECT:bool=FALSE \
               -DSTACK_DETAILS_BFD:bool=FALSE \
