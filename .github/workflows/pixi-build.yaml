@@ -1,0 +1,172 @@
+---
+name: Pixi Build
+
+# Builds a subset of the ROS 2 workspace in the pixi environment described by
+# pixi.toml.  This is not a replacement for ci.ros2.org -- it is a fast signal
+# on whether a change to pixi.toml or ros2.repos still yields an environment
+# that can actually build ROS 2, on both of the platforms pixi.toml targets.
+#
+# Standard GitHub-hosted runners have 4 vCPUs, 16 GB of RAM and 14 GB of disk,
+# which is not enough for the whole workspace, hence --packages-up-to.  The set
+# can be overridden when the workflow is dispatched manually.
+
+on:
+  pull_request:
+    paths:
+      - 'pixi.toml'
+      - 'ros2.repos'
+      - '.github/workflows/pixi-build.yaml'
+  workflow_dispatch:
+    inputs:
+      packages-up-to:
+        description: 'Space separated packages to build up to'
+        type: string
+        default: 'demo_nodes_cpp demo_nodes_py rosbag2'
+      run-tests:
+        description: 'Run colcon test after building'
+        type: boolean
+        default: false
+  schedule:
+    # Daily, to catch conda-forge drift in the loosely pinned dependencies.
+    - cron: '0 7 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    # Only this repository has a reason to run the nightly.
+    if: github.event_name != 'schedule' || github.repository == 'ros2/ros2'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            packages-skip: ''
+          # The tracetools packages are LTTng based and are not built on Windows.
+          - name: windows
+            os: windows-latest
+            packages-skip: >-
+              --packages-skip lttngpy tracetools_trace ros2trace
+              tracetools_launch test_ros2trace test_tracetools
+              test_tracetools_launch tracetools_test
+    env:
+      PACKAGES: ${{ inputs.packages-up-to || 'demo_nodes_cpp demo_nodes_py rosbag2' }}
+      PACKAGES_SKIP: ${{ matrix.packages-skip }}
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
+      # Well under the 10 GB that GitHub allows a repository to cache in total.
+      SCCACHE_CACHE_SIZE: 2G
+    steps:
+      - name: Clone project
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # ament and rosidl generate deeply nested paths that overrun MAX_PATH.
+      # The ros2/ci Windows images do the same thing.
+      - name: Enable long paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-ItemProperty `
+            -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
+            -Name 'LongPathsEnabled' -Value 1 -PropertyType DWORD -Force
+          git config --system core.longpaths true
+
+      # Ninja needs cl.exe on the PATH.  The Visual Studio generator is not an
+      # option here: CMake only honours <LANG>_COMPILER_LAUNCHER, and therefore
+      # sccache, for the Ninja and Makefile generators.
+      - name: Set up the MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347 # v0.10.1
+        with:
+          # pixi.lock is not committed, so there is no stable key to cache the
+          # environment against.  It is installed explicitly below instead.
+          run-install: false
+          cache: false
+
+      # The compiler cache is the only thing worth carrying between runs.  The
+      # package downloads would cost more disk than they save wall clock, and
+      # disk is the binding constraint on these runners.
+      - name: Restore the compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ matrix.name }}-
+
+      - name: Install the pixi environment
+        run: pixi install --color never
+
+      - name: Import the ROS 2 sources
+        shell: bash
+        run: |
+          mkdir -p src
+          pixi run vcs import --input ros2.repos --shallow --workers 8 src
+
+      - name: Report available disk space
+        shell: bash
+        run: df -h .
+
+      - name: Build
+        shell: bash
+        run: |
+          pixi run colcon build \
+            --merge-install \
+            --event-handlers console_cohesion+ \
+            --packages-up-to $PACKAGES \
+            $PACKAGES_SKIP \
+            --cmake-args \
+              -GNinja \
+              --no-warn-unused-cli \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_BUILD_WITH_INSTALL_RPATH:bool=TRUE \
+              -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+              -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+              -DSTACK_DETAILS_AUTO_DETECT:bool=FALSE \
+              -DSTACK_DETAILS_BFD:bool=FALSE \
+              -Wno-deprecated
+
+      - name: Test
+        if: inputs.run-tests
+        shell: bash
+        run: |
+          pixi run colcon test \
+            --merge-install \
+            --event-handlers console_cohesion+ \
+            --packages-up-to $PACKAGES \
+            $PACKAGES_SKIP
+          pixi run colcon test-result --verbose
+
+      - name: Report compiler cache statistics
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          pixi run sccache --show-stats
+          # Flush the server so the cache directory is consistent when the
+          # post-run cache step picks it up.
+          pixi run sccache --stop-server
+
+      - name: Upload colcon logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: colcon-logs-${{ matrix.name }}
+          path: log/
+          retention-days: 7
+          if-no-files-found: ignore
