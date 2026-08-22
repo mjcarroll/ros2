@@ -50,7 +50,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: linux
+          - name: linux-amd64
             os: ubuntu-latest
             packages-skip: ''
             # GitHub's Ubuntu runners ship PowerShell, and colcon-powershell
@@ -175,6 +175,9 @@ jobs:
       # The compiler cache is the only thing worth carrying between runs.  The
       # package downloads would cost more disk than they save wall clock, and
       # disk is the binding constraint on these runners.
+      # Leg names must not prefix one another: restore-keys matches by
+      # prefix and returns the newest hit, so a leg called 'linux' happily
+      # restores a 'linux-arm64' cache and then misses on every lookup.
       - name: Restore the compiler cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
