@@ -78,11 +78,7 @@ jobs:
               test_tracetools_launch tracetools_test
             extension-blocklist: ''
             workdir: 'W:\'
-            # colcon hands each package 'cmake --build -- -j4 -l4'.
-            # The load average cap does nothing on Windows, so four
-            # packages at a time means up to sixteen compilers on
-            # four vCPUs.
-            parallel-workers: '2'
+            parallel-workers: '4'
           # macOS is Tier 3 in REP 2000, and these runners are 3 vCPUs and
           # 7 GB of RAM -- half the memory of the others -- so keep colcon's
           # own concurrency down to leave room for the compilers.  The
