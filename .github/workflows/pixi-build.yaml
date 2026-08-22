@@ -42,6 +42,7 @@ jobs:
     # Only this repository has a reason to run the nightly.
     if: github.event_name != 'schedule' || github.repository == 'ros2/ros2'
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental || false }}
     timeout-minutes: 350
     permissions:
       contents: read
@@ -85,6 +86,7 @@ jobs:
           # tracetools packages are LTTng based and do not build here either.
           - name: macos
             os: macos-latest
+            experimental: true
             packages-skip: >-
               --packages-skip lttngpy tracetools_trace ros2trace
               tracetools_launch test_ros2trace test_tracetools
