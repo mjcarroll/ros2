@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Dependencies to build ROS 2 on Windows and Linux"
 authors = ["Chris Lalancette <clalancette@gmail.com>"]
 channels = ["conda-forge"]
-platforms = ["win-64", "linux-64"]
+platforms = ["win-64", "linux-64", "linux-aarch64"]
 
 [target.win-64.dependencies]
 7zip = ">=23.1,<24"
@@ -22,6 +22,29 @@ freeimage = "==3.18.0"
 gcc_linux-64 = "==13.3.0"
 glew = "==2.1.0"
 gxx_linux-64 = "==13.3.0"
+libacl = "==2.3.2"
+libgles-devel = "==1.7.0"
+libgl-devel = "==1.7.0"
+libglx-devel = "==1.7.0"
+libglu = "==9.0.3"
+libopengl-devel = "==1.7.0"
+lttng-ust = "==2.13.9"
+make = "==4.3"
+mesalib = ">=24.0,<26"
+pkgconfig = "==1.5.5"
+xorg-libxaw = "==1.0.14"
+zziplib = "==0.13.69"
+
+# Ubuntu arm64 is a Tier 1 platform in REP 2000, the same as amd64.  The
+# versions here deliberately match the linux-64 block above; conda-forge
+# carries the same toolchain releases for both.
+[target.linux-aarch64.dependencies]
+binutils_linux-aarch64 = "==2.44"
+freeglut = "==3.2.2"
+freeimage = "==3.18.0"
+gcc_linux-aarch64 = "==13.3.0"
+glew = "==2.1.0"
+gxx_linux-aarch64 = "==13.3.0"
 libacl = "==2.3.2"
 libgles-devel = "==1.7.0"
 libgl-devel = "==1.7.0"
