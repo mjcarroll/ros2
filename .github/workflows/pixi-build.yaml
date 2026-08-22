@@ -83,6 +83,19 @@ jobs:
             # packages at a time means up to sixteen compilers on
             # four vCPUs.
             parallel-workers: '2'
+          # macOS is Tier 3 in REP 2000, and these runners are 3 vCPUs and
+          # 7 GB of RAM -- half the memory of the others -- so keep colcon's
+          # own concurrency down to leave room for the compilers.  The
+          # tracetools packages are LTTng based and do not build here either.
+          - name: macos
+            os: macos-latest
+            packages-skip: >-
+              --packages-skip lttngpy tracetools_trace ros2trace
+              tracetools_launch test_ros2trace test_tracetools
+              test_tracetools_launch tracetools_test
+            extension-blocklist: colcon_core.shell.powershell
+            workdir: '.'
+            parallel-workers: '2'
     env:
       PACKAGES: ${{ inputs.packages-up-to || 'demo_nodes_cpp demo_nodes_py rosbag2' }}
       PACKAGES_SKIP: ${{ matrix.packages-skip }}
