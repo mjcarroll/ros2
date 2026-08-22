@@ -183,6 +183,19 @@ jobs:
           restore-keys: |
             sccache-${{ matrix.name }}-
 
+      # zenoh_c pulls roughly 350 crates and a git dependency on every run.
+      # None of that is compilation, so no amount of sccache touches it.
+      - name: Restore the cargo registry
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: |
+            cargo-${{ matrix.name }}-
+
       - name: Install the pixi environment
         working-directory: ${{ matrix.workdir }}
         run: pixi install --color never
@@ -278,6 +291,16 @@ jobs:
         with:
           path: ${{ github.workspace }}/.sccache
           key: sccache-${{ matrix.name }}-${{ github.run_id }}
+
+      - name: Save the cargo registry
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ matrix.name }}-${{ github.run_id }}
 
       - name: Upload colcon logs
         if: failure()
