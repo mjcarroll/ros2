@@ -61,6 +61,14 @@ jobs:
             extension-blocklist: colcon_core.shell.powershell
             workdir: '.'
             parallel-workers: '4'
+          # Ubuntu arm64 is Tier 1 in REP 2000.  These runners are free and
+          # unlimited on public repositories, same as the amd64 ones.
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            packages-skip: ''
+            extension-blocklist: colcon_core.shell.powershell
+            workdir: '.'
+            parallel-workers: '4'
           # The tracetools packages are LTTng based and are not built on Windows.
           - name: windows
             os: windows-latest
