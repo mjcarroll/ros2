@@ -111,6 +111,16 @@ jobs:
       # so with -D alone every vendor package compiles uncached.
       CMAKE_C_COMPILER_LAUNCHER: sccache
       CMAKE_CXX_COMPILER_LAUNCHER: sccache
+      # zenoh-c's release profile sets lto = "fat" and codegen-units = 1,
+      # which serialises codegen and then runs one whole-program optimisation
+      # pass over roughly a thousand crates.  cargo reported 18m 42s of a
+      # 19m 11s package on Windows.  No per-invocation cache can touch that,
+      # which is why sccache made no difference to it across five runs.
+      #
+      # This job asks whether the workspace compiles and links, not how fast
+      # the result runs, so trade the optimisation for parallel codegen.
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
       RUSTC_WRAPPER: sccache
       CARGO_INCREMENTAL: '0'
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
