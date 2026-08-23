@@ -391,13 +391,19 @@ jobs:
       # the next run: observed hit rates of 4%, 70% and 79% against a healthy
       # 96%, and a Linux build that took 60 minutes instead of 10.
       #
-      # Keep the newest entry per leg per kind and drop the rest.  Newest rather
-      # than "everything but this run" on purpose: if the save above was skipped
-      # or failed, the newest is the previous good cache and it survives.
+      # Keep the newest entries per leg per kind and drop the rest.  Newest
+      # rather than "everything but this run" on purpose: if the save above was
+      # skipped or failed, the newest is the previous good cache and it
+      # survives.  Each leg only ever touches its own prefix, so the two jobs
+      # cannot race.
       #
-      # Each leg only ever touches its own prefix, so the two jobs cannot race.
-      # zenoh entries are keyed by content hash rather than run id, so they are
-      # not superseded by a newer run and are left alone.
+      # sccache and cargo keep one, because github.run_id means a newer entry
+      # strictly supersedes an older one.  zenoh keeps two: its key is a content
+      # hash, so an older entry is not superseded, it is a different build of a
+      # different source tree.  Two covers rebasing back and forth across a
+      # zenoh_cpp_vendor change without paying to rebuild it -- 9 to 19 minutes
+      # on Windows -- and still bounds the growth.  The entry this run actually
+      # restored is never deleted, however old it is.
       - name: Drop superseded caches for this leg
         if: success() || failure()
         continue-on-error: true
@@ -405,20 +411,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           LEG: ${{ matrix.name }}
+          ZENOH_KEY: ${{ steps.zenoh-key.outputs.key }}
         run: |
           query='per_page=100&sort=created_at&direction=desc'
           entries=$(gh api "repos/$GITHUB_REPOSITORY/actions/caches?$query" \
             --jq '.actions_caches[] | "\(.id) \(.key)"') || exit 0
-          for prefix in "sccache-$LEG-" "cargo-$LEG-"; do
+
+          # prune <prefix> <how many to keep> [key to never delete]
+          prune() {
             printf '%s\n' "$entries" \
-              | awk -v p="$prefix" 'index($2, p) == 1 { print $1 }' \
-              | tail -n +2 \
-              | while read -r id; do
-                  echo "Deleting superseded cache $id ($prefix)"
+              | awk -v p="$1" 'index($2, p) == 1 { print $1, $2 }' \
+              | tail -n +"$(( $2 + 1 ))" \
+              | while read -r id key; do
+                  if [ -n "$3" ] && [ "$key" = "$3" ]; then
+                    echo "Keeping $key (in use by this run)"
+                    continue
+                  fi
+                  echo "Deleting superseded cache $key"
                   gh api --method DELETE \
                     "repos/$GITHUB_REPOSITORY/actions/caches/$id" || true
                 done
-          done
+          }
+
+          prune "sccache-$LEG-" 1
+          prune "cargo-$LEG-" 1
+          prune "zenoh-$LEG-" 2 "$ZENOH_KEY"
 
       - name: Upload colcon logs
         if: failure()
