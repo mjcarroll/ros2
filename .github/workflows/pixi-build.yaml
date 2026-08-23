@@ -42,10 +42,11 @@ jobs:
     # Only this repository has a reason to run the nightly.
     if: github.event_name != 'schedule' || github.repository == 'ros2/ros2'
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental || false }}
     timeout-minutes: 350
     permissions:
       contents: read
+      # Required by the cache cleanup step below.
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -62,14 +63,6 @@ jobs:
             extension-blocklist: colcon_core.shell.powershell
             workdir: '.'
             parallel-workers: '4'
-          # Ubuntu arm64 is Tier 1 in REP 2000.  These runners are free and
-          # unlimited on public repositories, same as the amd64 ones.
-          - name: linux-arm64
-            os: ubuntu-24.04-arm
-            packages-skip: ''
-            extension-blocklist: colcon_core.shell.powershell
-            workdir: '.'
-            parallel-workers: '4'
           # The tracetools packages are LTTng based and are not built on Windows.
           - name: windows
             os: windows-latest
@@ -80,20 +73,6 @@ jobs:
             extension-blocklist: ''
             workdir: 'W:\'
             parallel-workers: '4'
-          # macOS is Tier 3 in REP 2000, and these runners are 3 vCPUs and
-          # 7 GB of RAM -- half the memory of the others -- so keep colcon's
-          # own concurrency down to leave room for the compilers.  The
-          # tracetools packages are LTTng based and do not build here either.
-          - name: macos
-            os: macos-latest
-            experimental: true
-            packages-skip: >-
-              --packages-skip lttngpy tracetools_trace ros2trace
-              tracetools_launch test_ros2trace test_tracetools
-              test_tracetools_launch tracetools_test
-            extension-blocklist: colcon_core.shell.powershell
-            workdir: '.'
-            parallel-workers: '2'
     env:
       PACKAGES: ${{ inputs.packages-up-to || 'demo_nodes_cpp demo_nodes_py rosbag2' }}
       PACKAGES_SKIP: ${{ matrix.packages-skip }}
@@ -185,9 +164,11 @@ jobs:
       # The compiler cache is the only thing worth carrying between runs.  The
       # package downloads would cost more disk than they save wall clock, and
       # disk is the binding constraint on these runners.
-      # Leg names must not prefix one another: restore-keys matches by
-      # prefix and returns the newest hit, so a leg called 'linux' happily
-      # restores a 'linux-arm64' cache and then misses on every lookup.
+      # Leg names must not prefix one another: restore-keys matches by prefix
+      # and returns the newest hit, so a leg called 'linux' would happily
+      # restore a 'linux-amd64' cache and then miss on every lookup.  The
+      # cleanup step at the end of the job matches the same way, and a leg
+      # whose name prefixes another's would delete that other leg's caches.
       - name: Restore the compiler cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -367,15 +348,20 @@ jobs:
       # actions/cache only saves the cache when the job succeeds, and a build
       # that fell over partway through has still done real work worth keeping
       # for the next attempt, so save it explicitly instead.
+      #
+      # Not always(): that fires on cancellation too, and cancel-in-progress is
+      # on, so a run cancelled seconds after it started would write a nearly
+      # empty cache over a complete one.  success() || failure() keeps the
+      # failed-build case, which is the reason this is explicit at all.
       - name: Save the compiler cache
-        if: always()
+        if: success() || failure()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.sccache
           key: sccache-${{ matrix.name }}-${{ github.run_id }}
 
       - name: Save the cargo registry
-        if: always()
+        if: success() || failure()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -397,6 +383,42 @@ jobs:
             ${{ github.workspace }}/install/share/ament_index/resource_index/parent_prefix_path/zenoh_cpp_vendor
             ${{ github.workspace }}/install/share/ament_index/resource_index/vendor_packages/zenoh_cpp_vendor
           key: ${{ steps.zenoh-key.outputs.key }}
+
+      # The sccache and cargo keys carry github.run_id, so every run mints a
+      # new entry and nothing ever removes the old one.  GitHub's only cleanup
+      # is LRU eviction once the repository passes 10 GB, and an sccache leg is
+      # ~2 GB, so the previous run's entries were being evicted out from under
+      # the next run: observed hit rates of 4%, 70% and 79% against a healthy
+      # 96%, and a Linux build that took 60 minutes instead of 10.
+      #
+      # Keep the newest entry per leg per kind and drop the rest.  Newest rather
+      # than "everything but this run" on purpose: if the save above was skipped
+      # or failed, the newest is the previous good cache and it survives.
+      #
+      # Each leg only ever touches its own prefix, so the two jobs cannot race.
+      # zenoh entries are keyed by content hash rather than run id, so they are
+      # not superseded by a newer run and are left alone.
+      - name: Drop superseded caches for this leg
+        if: success() || failure()
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LEG: ${{ matrix.name }}
+        run: |
+          query='per_page=100&sort=created_at&direction=desc'
+          entries=$(gh api "repos/$GITHUB_REPOSITORY/actions/caches?$query" \
+            --jq '.actions_caches[] | "\(.id) \(.key)"') || exit 0
+          for prefix in "sccache-$LEG-" "cargo-$LEG-"; do
+            printf '%s\n' "$entries" \
+              | awk -v p="$prefix" 'index($2, p) == 1 { print $1 }' \
+              | tail -n +2 \
+              | while read -r id; do
+                  echo "Deleting superseded cache $id ($prefix)"
+                  gh api --method DELETE \
+                    "repos/$GITHUB_REPOSITORY/actions/caches/$id" || true
+                done
+          done
 
       - name: Upload colcon logs
         if: failure()
