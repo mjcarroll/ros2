@@ -247,6 +247,41 @@ jobs:
           mkdir -p src
           pixi run vcs import --input ros2.repos --shallow --workers 8 src
 
+      # zenoh_cpp_vendor pins zenoh-c and zenoh-cpp to exact commits, so when
+      # neither those nor the toolchain have moved, the library it produces is
+      # byte for byte the one we built last time.  Its build directory is 4.1 GB
+      # and what it installs is 40 MB, so cache the product, not the build.
+      #
+      # The pinned commits live in the vendor package's CMakeLists, which does
+      # not exist until vcs import has run, so the key cannot be a hashFiles()
+      # expression on the cache step itself.
+      - name: Work out the zenoh cache key
+        id: zenoh-key
+        working-directory: ${{ matrix.workdir }}
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha() { sha256sum "$@"; }
+          else
+            sha() { shasum -a 256 "$@"; }
+          fi
+          pins=$(sha src/ros2/rmw_zenoh/zenoh_cpp_vendor/CMakeLists.txt pixi.toml             | sha | cut -c1-16)
+          profile="lto$CARGO_PROFILE_RELEASE_LTO-cgu$CARGO_PROFILE_RELEASE_CODEGEN_UNITS"
+          echo "key=zenoh-${{ matrix.name }}-$profile-$pins" >> "$GITHUB_OUTPUT"
+
+      # Exact matches only.  A restore-key prefix would happily hand back a
+      # build of a different zenoh commit, which is the whole thing we are
+      # trying to be careful about.
+      - name: Restore the zenoh build
+        id: zenoh-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ github.workspace }}/install/opt/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/colcon-core/packages/zenoh_cpp_vendor
+          key: ${{ steps.zenoh-key.outputs.key }}
+
       - name: Report available disk space
         working-directory: ${{ matrix.workdir }}
         shell: bash
@@ -256,12 +291,21 @@ jobs:
         working-directory: ${{ matrix.workdir }}
         shell: bash
         run: |
+          skip="$PACKAGES_SKIP"
+          if [ '${{ steps.zenoh-cache.outputs.cache-hit }}' = 'true' ]; then
+            echo 'zenoh is unchanged since the cached build; skipping it'
+            if [ -n "$skip" ]; then
+              skip="$skip zenoh_cpp_vendor"
+            else
+              skip='--packages-skip zenoh_cpp_vendor'
+            fi
+          fi
           pixi run colcon build \
             --merge-install \
             --parallel-workers ${{ matrix.parallel-workers }} \
             --event-handlers console_cohesion+ \
             --packages-up-to $PACKAGES \
-            $PACKAGES_SKIP \
+            $skip \
             --cmake-args \
               -GNinja \
               --no-warn-unused-cli \
@@ -314,6 +358,16 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: cargo-${{ matrix.name }}-${{ github.run_id }}
+
+      - name: Save the zenoh build
+        if: success() && steps.zenoh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ github.workspace }}/install/opt/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/colcon-core/packages/zenoh_cpp_vendor
+          key: ${{ steps.zenoh-key.outputs.key }}
 
       - name: Upload colcon logs
         if: failure()
