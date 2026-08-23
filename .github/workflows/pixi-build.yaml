@@ -255,6 +255,15 @@ jobs:
       # The pinned commits live in the vendor package's CMakeLists, which does
       # not exist until vcs import has run, so the key cannot be a hashFiles()
       # expression on the cache step itself.
+      #
+      # Take the rust pin out of pixi.toml rather than hashing the whole file.
+      # This workflow runs on changes to pixi.toml, so a key over the entire
+      # file is invalidated by the very edit that triggered the run, and the
+      # cache then misses on exactly the runs it exists to help.  Nothing else
+      # in pixi.toml reaches this build: zenoh is compiled by the pinned rustc,
+      # and its C++ side by the runner image's toolchain, which pixi does not
+      # supply.  A toolchain bump in the image is therefore not covered here,
+      # same as it is not covered for the compiler cache.
       - name: Work out the zenoh cache key
         id: zenoh-key
         working-directory: ${{ matrix.workdir }}
@@ -265,13 +274,25 @@ jobs:
           else
             sha() { shasum -a 256 "$@"; }
           fi
-          pins=$(sha src/ros2/rmw_zenoh/zenoh_cpp_vendor/CMakeLists.txt pixi.toml             | sha | cut -c1-16)
+          rust_pin=$(grep -E '^[[:space:]]*rust[[:space:]]*=' pixi.toml || true)
+          if [ -z "$rust_pin" ]; then
+            echo 'No rust pin found in pixi.toml; the zenoh cache key would' >&2
+            echo 'not describe the toolchain that built it.' >&2
+            exit 1
+          fi
+          pins=$( { sha src/ros2/rmw_zenoh/zenoh_cpp_vendor/CMakeLists.txt
+                    echo "$rust_pin"; } | sha | cut -c1-16)
           profile="lto$CARGO_PROFILE_RELEASE_LTO-cgu$CARGO_PROFILE_RELEASE_CODEGEN_UNITS"
           echo "key=zenoh-${{ matrix.name }}-$profile-$pins" >> "$GITHUB_OUTPUT"
 
       # Exact matches only.  A restore-key prefix would happily hand back a
       # build of a different zenoh commit, which is the whole thing we are
       # trying to be careful about.
+      #
+      # Everything zenoh_cpp_vendor installs has to come back, not just the
+      # library: the ament index entries below are written by the package too,
+      # and skipping the build skips writing them.  Keep this list identical to
+      # the one on the save step.
       - name: Restore the zenoh build
         id: zenoh-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -280,6 +301,10 @@ jobs:
             ${{ github.workspace }}/install/opt/zenoh_cpp_vendor
             ${{ github.workspace }}/install/share/zenoh_cpp_vendor
             ${{ github.workspace }}/install/share/colcon-core/packages/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/packages/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/package_run_dependencies/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/parent_prefix_path/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/vendor_packages/zenoh_cpp_vendor
           key: ${{ steps.zenoh-key.outputs.key }}
 
       - name: Report available disk space
@@ -367,6 +392,10 @@ jobs:
             ${{ github.workspace }}/install/opt/zenoh_cpp_vendor
             ${{ github.workspace }}/install/share/zenoh_cpp_vendor
             ${{ github.workspace }}/install/share/colcon-core/packages/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/packages/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/package_run_dependencies/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/parent_prefix_path/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/vendor_packages/zenoh_cpp_vendor
           key: ${{ steps.zenoh-key.outputs.key }}
 
       - name: Upload colcon logs
