@@ -1,14 +1,16 @@
 ---
 name: Pixi Build
 
-# Builds a subset of the ROS 2 workspace in the pixi environment described by
-# pixi.toml.  This is not a replacement for ci.ros2.org -- it is a fast signal
-# on whether a change to pixi.toml or ros2.repos still yields an environment
-# that can actually build ROS 2, on both of the platforms pixi.toml targets.
+# Builds the ROS 2 workspace in the pixi environment described by pixi.toml.
+# This is not a replacement for ci.ros2.org -- it is a signal on whether a
+# change to pixi.toml or ros2.repos still yields an environment that can
+# actually build ROS 2, on both of the platforms pixi.toml targets.
 #
-# Standard GitHub-hosted runners have 4 vCPUs, 16 GB of RAM and 14 GB of disk,
-# which is not enough for the whole workspace, hence --packages-up-to.  The set
-# can be overridden when the workflow is dispatched manually.
+# This used to build only --packages-up-to a handful of leaves, because the
+# runners did not have the disk for the whole workspace.  They do now: the
+# hosted images report 141 GB free on Windows and 79 GB free on Linux, against
+# a full workspace that occupies roughly 35 GB of build and install trees.
+# Dispatching the workflow manually can still narrow it to a subset.
 
 on:
   pull_request:
@@ -19,9 +21,9 @@ on:
   workflow_dispatch:
     inputs:
       packages-up-to:
-        description: 'Space separated packages to build up to'
+        description: 'Space separated packages to build up to (empty builds the whole workspace)'
         type: string
-        default: 'demo_nodes_cpp demo_nodes_py rosbag2'
+        default: ''
       run-tests:
         description: 'Run colcon test after building'
         type: boolean
@@ -74,7 +76,8 @@ jobs:
             workdir: 'W:\'
             parallel-workers: '4'
     env:
-      PACKAGES: ${{ inputs.packages-up-to || 'demo_nodes_cpp demo_nodes_py rosbag2' }}
+      # Empty means the whole workspace; a manual dispatch can narrow it.
+      PACKAGES: ${{ inputs.packages-up-to || '' }}
       PACKAGES_SKIP: ${{ matrix.packages-skip }}
       COLCON_EXTENSION_BLOCKLIST: ${{ matrix.extension-blocklist }}
       # CMAKE_<LANG>_COMPILER_LAUNCHER only reaches the C and C++ compilers.
@@ -103,8 +106,16 @@ jobs:
       RUSTC_WRAPPER: sccache
       CARGO_INCREMENTAL: '0'
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
-      # Well under the 10 GB that GitHub allows a repository to cache in total.
-      SCCACHE_CACHE_SIZE: 2G
+      # GitHub allows a repository 10 GB of cache in total, across every entry.
+      # The cleanup step at the end of the job keeps one generation per leg, so
+      # the standing cost is two sccache entries plus about 170 MB of cargo and
+      # zenoh, which puts the ceiling for this value a little under 5 GB.
+      #
+      # 2G was already saturated by the old --packages-up-to subset -- runs
+      # reported a cache size of exactly 2 GiB -- and the whole workspace is
+      # roughly twice the compile requests, so keeping 2G here would just make
+      # the cache evict itself mid-run and undo the hit rate.
+      SCCACHE_CACHE_SIZE: 4G
     steps:
       - name: Clone project
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -306,11 +317,17 @@ jobs:
               skip='--packages-skip zenoh_cpp_vendor'
             fi
           fi
+          # An empty PACKAGES means the whole workspace, so leave the option off
+          # entirely rather than passing it with no arguments.
+          up_to=""
+          if [ -n "$PACKAGES" ]; then
+            up_to="--packages-up-to $PACKAGES"
+          fi
           pixi run colcon build \
             --merge-install \
             --parallel-workers ${{ matrix.parallel-workers }} \
             --event-handlers console_cohesion+ \
-            --packages-up-to $PACKAGES \
+            $up_to \
             $skip \
             --cmake-args \
               -GNinja \
@@ -327,10 +344,14 @@ jobs:
         if: inputs.run-tests
         shell: bash
         run: |
+          up_to=""
+          if [ -n "$PACKAGES" ]; then
+            up_to="--packages-up-to $PACKAGES"
+          fi
           pixi run colcon test \
             --merge-install \
             --event-handlers console_cohesion+ \
-            --packages-up-to $PACKAGES \
+            $up_to \
             $PACKAGES_SKIP
           pixi run colcon test-result --verbose
 
@@ -349,12 +370,30 @@ jobs:
       # that fell over partway through has still done real work worth keeping
       # for the next attempt, so save it explicitly instead.
       #
-      # Not always(): that fires on cancellation too, and cancel-in-progress is
-      # on, so a run cancelled seconds after it started would write a nearly
-      # empty cache over a complete one.  success() || failure() keeps the
-      # failed-build case, which is the reason this is explicit at all.
+      # Gate that on how much is actually in the cache rather than on how the
+      # job ended.  cancel-in-progress means a run can be cancelled seconds
+      # after it starts, and that near-empty cache must not evict a complete
+      # one -- but a full-workspace build that hits timeout-minutes reports as
+      # cancelled too, after hours of real work, and losing that would leave
+      # the cache permanently cold and every subsequent run timing out the same
+      # way.  Size tells those two apart; the job conclusion does not.
+      - name: Measure the compiler cache
+        id: sccache-size
+        if: always()
+        shell: bash
+        run: |
+          kb=$(du -sk "$SCCACHE_DIR" 2>/dev/null | cut -f1)
+          kb=${kb:-0}
+          echo "compiler cache holds ${kb} KB"
+          if [ "$kb" -ge 262144 ]; then
+            echo 'worth-saving=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'worth-saving=false' >> "$GITHUB_OUTPUT"
+            echo 'under 256 MB, not saving over whatever is already stored'
+          fi
+
       - name: Save the compiler cache
-        if: success() || failure()
+        if: always() && steps.sccache-size.outputs.worth-saving == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.sccache
@@ -405,7 +444,7 @@ jobs:
       # on Windows -- and still bounds the growth.  The entry this run actually
       # restored is never deleted, however old it is.
       - name: Drop superseded caches for this leg
-        if: success() || failure()
+        if: always()
         continue-on-error: true
         shell: bash
         env:
