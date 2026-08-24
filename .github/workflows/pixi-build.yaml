@@ -55,7 +55,6 @@ jobs:
         include:
           - name: linux-amd64
             os: ubuntu-latest
-            packages-skip: ''
             # GitHub's Ubuntu runners ship PowerShell, and colcon-powershell
             # (PRIORITY 300) then outranks colcon-core's sh extension
             # (PRIORITY 200) as the primary shell.  Its environment hooks
@@ -65,20 +64,29 @@ jobs:
             extension-blocklist: colcon_core.shell.powershell
             workdir: '.'
             parallel-workers: '4'
-          # The tracetools packages are LTTng based and are not built on Windows.
           - name: windows
             os: windows-latest
-            packages-skip: >-
-              --packages-skip lttngpy tracetools_trace ros2trace
-              tracetools_launch test_ros2trace test_tracetools
-              test_tracetools_launch tracetools_test
             extension-blocklist: ''
             workdir: 'W:\'
             parallel-workers: '4'
     env:
       # Empty means the whole workspace; a manual dispatch can narrow it.
       PACKAGES: ${{ inputs.packages-up-to || '' }}
-      PACKAGES_SKIP: ${{ matrix.packages-skip }}
+      # The LTTng stack is skipped on both platforms, for two different
+      # reasons.  Windows has no LTTng at all.  Linux does, but lttngpy needs
+      # liblttng-ctl and conda-forge only packages lttng-ust -- there is no
+      # lttng-tools or liblttng-ctl feedstock -- so pkg_check_modules cannot
+      # find lttng-ctl and the package fails to configure.  Everything below
+      # is lttngpy or something that depends on it; the tracetools C library
+      # itself builds fine on Linux against lttng-ust and is deliberately not
+      # in this list.
+      #
+      # This does mean the pixi environment gives no coverage of ROS 2 tracing
+      # on Linux, unlike a rosdep-provisioned Ubuntu where it builds.
+      PACKAGES_SKIP: >-
+        --packages-skip lttngpy tracetools_trace ros2trace
+        tracetools_launch test_ros2trace test_tracetools
+        test_tracetools_launch tracetools_test
       COLCON_EXTENSION_BLOCKLIST: ${{ matrix.extension-blocklist }}
       # CMAKE_<LANG>_COMPILER_LAUNCHER only reaches the C and C++ compilers.
       # zenoh_cpp_vendor builds several hundred Rust crates through cargo,
