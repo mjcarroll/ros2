@@ -6,6 +6,17 @@ authors = ["Chris Lalancette <clalancette@gmail.com>"]
 channels = ["conda-forge"]
 platforms = ["win-64", "linux-64", "linux-aarch64", "osx-arm64"]
 
+# qt_gui_cpp generates Python bindings with SIP and fails to configure without
+# pyqt6 and pyqt6-sip -- "PyQt6 SIP bindings are required but were not found".
+# An apt-provisioned Ubuntu gets them from python3-pyqt6, but nothing puts them
+# into a pixi environment unless pixi.toml asks.
+#
+# They are listed per platform rather than in [dependencies] because
+# conda-forge cannot satisfy them on linux-aarch64 yet: it publishes no pyqt6
+# build for this Python there, and pyqt6 6.11 pulls qt6-main 6.11, which wants
+# libfreetype6 >= 2.14.3 against the freetype pinned below.  Asking for them
+# everywhere makes the aarch64 solve fail outright.  Adding aarch64 back to CI
+# means solving that first; qt_gui_cpp will not build there until it is.
 [target.win-64.dependencies]
 7zip = ">=23.1,<24"
 osrf_pycommon = "==0.2.1"
@@ -32,6 +43,9 @@ lttng-ust = "==2.13.9"
 make = "==4.3"
 mesalib = ">=24.0,<26"
 pkgconfig = "==1.5.5"
+# See the note above [target.win-64.dependencies].
+pyqt6 = ">=6.7,<7"
+pyqt6-sip = ">=13.0,<14"
 xorg-libxaw = "==1.0.14"
 zziplib = "==0.13.69"
 
