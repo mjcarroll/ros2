@@ -28,6 +28,13 @@ on:
         description: 'Run colcon test after building'
         type: boolean
         default: false
+      command-environment:
+        description: 'How colcon derives each package build environment'
+        type: choice
+        options:
+          - dsv
+          - shell
+        default: dsv
   schedule:
     # Daily, to catch conda-forge drift in the loosely pinned dependencies.
     - cron: '0 7 * * *'
@@ -88,6 +95,17 @@ jobs:
         tracetools_launch test_ros2trace test_tracetools
         test_tracetools_launch tracetools_test
       COLCON_EXTENSION_BLOCKLIST: ${{ matrix.extension-blocklist }}
+      # Before running anything, colcon derives each package's build
+      # environment by generating a script that dot-sources every dependency's
+      # package script plus all of that package's hooks, then spawning a shell
+      # to dump the result.  Locally that measured 438 ms + 60.5 ms per
+      # dependency on Windows; the median package has 93 dependencies, so ~6 s
+      # elapses before the first compiler runs, and a full workspace spends
+      # ~26 minutes of it.  colcon-dsv-env derives the same environment from
+      # the .dsv descriptors in-process instead.  Set this input to 'shell' to
+      # fall back to the stock path and get a comparable number out of the
+      # 'Report environment derivation overhead' step below.
+      COLCON_DSV_ENV_DISABLE: ${{ inputs.command-environment == 'shell' && '1' || '' }}
       # CMAKE_<LANG>_COMPILER_LAUNCHER only reaches the C and C++ compilers.
       # zenoh_cpp_vendor builds several hundred Rust crates through cargo,
       # which was 26 minutes of the Windows build and two thirds of a warm
@@ -212,6 +230,24 @@ jobs:
       - name: Install the pixi environment
         working-directory: ${{ matrix.workdir }}
         run: pixi install --color never
+
+      # Registered as a colcon shell extension at PRIORITY 400, so it outranks
+      # colcon-powershell (300) and colcon-core's sh/bat (200) for command
+      # environment generation only -- it creates no scripts of its own.  If it
+      # meets a descriptor it cannot evaluate it raises SkipExtensionException
+      # and colcon falls back to the shell extensions, so a build stays correct
+      # even where this does not apply.  Installed from the tree rather than
+      # pinned in pixi.toml because it is not on conda-forge; see
+      # tools/colcon-dsv-env/README.md.
+      - name: Install the .dsv command-environment extension
+        working-directory: ${{ matrix.workdir }}
+        shell: bash
+        run: |
+          pixi run python -m pip install -e tools/colcon-dsv-env \
+            --no-deps --no-build-isolation
+          if [ -n "$COLCON_DSV_ENV_DISABLE" ]; then
+            echo 'COLCON_DSV_ENV_DISABLE is set; colcon will use the shell path'
+          fi
 
       # Two copies of GNU coreutils' link.exe end up ahead of the MSVC tools
       # on PATH: one from the pixi environment's git package, and one from the
@@ -346,6 +382,16 @@ jobs:
               -DSTACK_DETAILS_AUTO_DETECT:bool=FALSE \
               -DSTACK_DETAILS_BFD:bool=FALSE \
               -Wno-deprecated
+
+      # Prints the share of in-job time that went into deriving environments
+      # rather than compiling, and writes it to the job summary.  Dispatch the
+      # workflow twice, once per 'command-environment' value, to compare.
+      - name: Report environment derivation overhead
+        working-directory: ${{ matrix.workdir }}
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: pixi run python tools/report_env_overhead.py log
 
       - name: Test
         working-directory: ${{ matrix.workdir }}
