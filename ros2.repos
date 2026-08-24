@@ -341,8 +341,10 @@ repositories:
     version: rolling
   ros2/rosidl:
     type: git
-    url: https://github.com/ros2/rosidl.git
-    version: rolling
+    # TEMP: unity build safe type descriptions, pending an upstream PR.
+    # Revert to ros2/rosidl rolling before this leaves the fork.
+    url: https://github.com/mjcarroll/rosidl.git
+    version: mjcarroll/unity-safe-type-descriptions
   ros2/rosidl_core:
     type: git
     url: https://github.com/ros2/rosidl_core.git
