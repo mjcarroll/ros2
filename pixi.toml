@@ -4,8 +4,19 @@ version = "0.1.0"
 description = "Dependencies to build ROS 2 on Windows and Linux"
 authors = ["Chris Lalancette <clalancette@gmail.com>"]
 channels = ["conda-forge"]
-platforms = ["win-64", "linux-64"]
+platforms = ["win-64", "linux-64", "linux-aarch64", "osx-arm64"]
 
+# qt_gui_cpp generates Python bindings with SIP and fails to configure without
+# pyqt6 and pyqt6-sip -- "PyQt6 SIP bindings are required but were not found".
+# An apt-provisioned Ubuntu gets them from python3-pyqt6, but nothing puts them
+# into a pixi environment unless pixi.toml asks.
+#
+# They are listed per platform rather than in [dependencies] because
+# conda-forge cannot satisfy them on linux-aarch64 yet: it publishes no pyqt6
+# build for this Python there, and pyqt6 6.11 pulls qt6-main 6.11, which wants
+# libfreetype6 >= 2.14.3 against the freetype pinned below.  Asking for them
+# everywhere makes the aarch64 solve fail outright.  Adding aarch64 back to CI
+# means solving that first; qt_gui_cpp will not build there until it is.
 [target.win-64.dependencies]
 7zip = ">=23.1,<24"
 osrf_pycommon = "==0.2.1"
@@ -22,6 +33,32 @@ freeimage = "==3.18.0"
 gcc_linux-64 = "==13.3.0"
 glew = "==2.1.0"
 gxx_linux-64 = "==13.3.0"
+libacl = "==2.3.2"
+libgles-devel = "==1.7.0"
+libgl-devel = "==1.7.0"
+libglx-devel = "==1.7.0"
+libglu = "==9.0.3"
+libopengl-devel = "==1.7.0"
+lttng-ust = "==2.13.9"
+make = "==4.3"
+mesalib = ">=24.0,<26"
+pkgconfig = "==1.5.5"
+# See the note above [target.win-64.dependencies].
+pyqt6 = ">=6.7,<7"
+pyqt6-sip = ">=13.0,<14"
+xorg-libxaw = "==1.0.14"
+zziplib = "==0.13.69"
+
+# Ubuntu arm64 is a Tier 1 platform in REP 2000, the same as amd64.  The
+# versions here deliberately match the linux-64 block above; conda-forge
+# carries the same toolchain releases for both.
+[target.linux-aarch64.dependencies]
+binutils_linux-aarch64 = "==2.44"
+freeglut = "==3.2.2"
+freeimage = "==3.18.0"
+gcc_linux-aarch64 = "==13.3.0"
+glew = "==2.1.0"
+gxx_linux-aarch64 = "==13.3.0"
 libacl = "==2.3.2"
 libgles-devel = "==1.7.0"
 libgl-devel = "==1.7.0"
@@ -56,6 +93,10 @@ colcon-recursive-crawl = ">=0.2.3,<0.3"
 colcon-ros = ">=0.5.0,<0.6"
 colcon-ros-domain-id-coordinator = ">=0.2.1,<0.3"
 colcon-test-result = ">=0.3.8,<0.4"
+
+# Build tooling that ROS 2 does not require, but that speeds up local iteration.
+ninja = ">=1.13.2,<2"
+sccache = ">=0.17,<0.18"
 
 # The rest of the dependencies here are used by one or more ROS packages.  We aggressively
 # pin them to particular versions that are as close as possible to their counterparts in Ubuntu.
