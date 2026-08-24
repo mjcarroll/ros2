@@ -63,6 +63,14 @@ colcon-ros = ">=0.5.0,<0.6"
 colcon-ros-domain-id-coordinator = ">=0.2.4,<0.3"
 colcon-test-result = ">=0.3.8,<0.4"
 
+# Build tooling that ROS 2 does not require, but that speeds up local iteration.
+# This is the content of ros2/ros2#1854, kept here because the workflow depends
+# on both: it configures with -GNinja and wraps the compilers in sccache.  If
+# that PR lands before this branch does, drop this block rather than merging it
+# twice.
+ninja = ">=1.13.2,<2"
+sccache = ">=0.17,<0.18"
+
 # The rest of the dependencies here are used by one or more ROS packages.  We aggressively
 # pin them to particular versions that are as close as possible to their counterparts in Ubuntu.
 argcomplete = "==3.6.3"
