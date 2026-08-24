@@ -127,7 +127,14 @@ jobs:
       # format flag it sees, so this makes /Z7 win.  Debug info goes into the
       # object instead of a PDB, which removes the collision and is also the
       # form sccache can actually cache.
-      _CL_: /Z7
+      #
+      # Spelled -Z7, not /Z7.  The build runs under Git bash, and MSYS rewrites
+      # environment values that look like absolute POSIX paths when it hands
+      # them to a native program, so /Z7 reaches cl.exe as something like
+      # 'C:/Program Files/Git/Z7' and it tries to compile that as two source
+      # files.  MSVC accepts either prefix; only the dash form survives the
+      # trip.
+      _CL_: -Z7
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
       # GitHub allows a repository 10 GB of cache in total, across every entry.
       # The cleanup step at the end of the job keeps one generation per leg, so
