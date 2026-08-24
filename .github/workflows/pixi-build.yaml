@@ -385,6 +385,7 @@ jobs:
               -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
               -DSTACK_DETAILS_AUTO_DETECT:bool=FALSE \
               -DSTACK_DETAILS_BFD:bool=FALSE \
+              -DROSIDL_GENERATED_UNITY_BUILD=OFF \
               -Wno-deprecated
 
       # Prints the share of in-job time that went into deriving environments
