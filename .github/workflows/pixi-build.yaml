@@ -113,6 +113,21 @@ jobs:
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
       RUSTC_WRAPPER: sccache
       CARGO_INCREMENTAL: '0'
+      # MSVC only; gcc ignores it.  gz-cmake puts /Zi in its release flags on
+      # purpose ("does not impact performance and can be helpful for
+      # debugging"), appending it to CMAKE_CXX_FLAGS_RELEASE, so no -D can
+      # outrank it -- it is always last on the command line.  /Zi writes a
+      # separate PDB, and under sccache the parallel writes collide even with
+      # /FS already present:
+      #
+      #   fatal error C1041: cannot open program database ... vc140.pdb;
+      #   if multiple CL.EXE write to the same .PDB file, please use /FS
+      #
+      # _CL_ appends after the command line, and MSVC honours the last debug
+      # format flag it sees, so this makes /Z7 win.  Debug info goes into the
+      # object instead of a PDB, which removes the collision and is also the
+      # form sccache can actually cache.
+      _CL_: /Z7
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
       # GitHub allows a repository 10 GB of cache in total, across every entry.
       # The cleanup step at the end of the job keeps one generation per leg, so

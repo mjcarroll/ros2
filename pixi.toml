@@ -160,6 +160,11 @@ pydot = "==1.4.2"
 pyflakes = "==3.2.0"
 pygraphviz = "==1.11"  # TODO: conda doesn't have pygraphviz 1.7 built for Python 3.12
 pyparsing = "==3.1.1"
+# Provides the 'pyqtbuild' module that sip-build loads as its build backend.
+# Without it qt_gui_cpp gets far enough to run sip-build and then dies with
+# "Unable to import 'pyqtbuild'".  noarch, and it does not depend on pyqt6
+# itself, so unlike pyqt6 it is safe to require on every platform.
+pyqt-builder = ">=1.15,<2"
 pytest = "==7.4.4"
 pytest-asyncio = "==0.20.3"
 pytest-cov = "==4.1.0"
