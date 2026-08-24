@@ -367,20 +367,26 @@ repositories:
     version: rolling
   ros2/rosidl_python:
     type: git
-    url: https://github.com/ros2/rosidl_python.git
-    version: rolling
+    # TEMP: unity builds for the generated interface targets, pending
+    # an upstream PR.  Revert to ros2/rosidl_python rolling.
+    url: https://github.com/mjcarroll/rosidl_python.git
+    version: mjcarroll/unity-build-generated-interfaces
   ros2/rosidl_runtime_py:
     type: git
     url: https://github.com/ros2/rosidl_runtime_py.git
     version: rolling
   ros2/rosidl_typesupport:
     type: git
-    url: https://github.com/ros2/rosidl_typesupport.git
-    version: rolling
+    # TEMP: unity builds for the generated interface targets, pending
+    # an upstream PR.  Revert to ros2/rosidl_typesupport rolling.
+    url: https://github.com/mjcarroll/rosidl_typesupport.git
+    version: mjcarroll/unity-build-generated-interfaces
   ros2/rosidl_typesupport_fastrtps:
     type: git
-    url: https://github.com/ros2/rosidl_typesupport_fastrtps.git
-    version: rolling
+    # TEMP: unity builds for the generated interface targets, pending
+    # an upstream PR.  Revert to ros2/rosidl_typesupport_fastrtps rolling.
+    url: https://github.com/mjcarroll/rosidl_typesupport_fastrtps.git
+    version: mjcarroll/unity-build-generated-interfaces
   ros2/rpyutils:
     type: git
     url: https://github.com/ros2/rpyutils.git

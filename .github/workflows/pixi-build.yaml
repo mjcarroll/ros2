@@ -77,8 +77,12 @@ jobs:
             workdir: 'W:\'
             parallel-workers: '4'
     env:
-      # Empty means the whole workspace; a manual dispatch can narrow it.
-      PACKAGES: ${{ inputs.packages-up-to || '' }}
+      # TEMP: narrowed to the interface closure while profiling unity builds of
+      # the generated sources.  100 packages, and it pulls in none of the
+      # vendored middleware, which keeps the signal on the generators and keeps
+      # iceoryx -- which is not unity safe -- out of the build entirely.
+      # Restore to '' for the whole workspace afterwards.
+      PACKAGES: ${{ inputs.packages-up-to || 'std_msgs test_msgs example_interfaces rcl_interfaces sensor_msgs geometry_msgs nav_msgs action_msgs' }}
       # The LTTng stack is skipped on both platforms, for two different
       # reasons.  Windows has no LTTng at all.  Linux does, but lttngpy needs
       # liblttng-ctl and conda-forge only packages lttng-ust -- there is no
@@ -381,7 +385,6 @@ jobs:
               -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
               -DSTACK_DETAILS_AUTO_DETECT:bool=FALSE \
               -DSTACK_DETAILS_BFD:bool=FALSE \
-              -DCMAKE_UNITY_BUILD=ON \
               -Wno-deprecated
 
       # Prints the share of in-job time that went into deriving environments
