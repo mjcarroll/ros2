@@ -113,28 +113,6 @@ jobs:
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
       RUSTC_WRAPPER: sccache
       CARGO_INCREMENTAL: '0'
-      # MSVC only; gcc ignores it.  gz-cmake puts /Zi in its release flags on
-      # purpose ("does not impact performance and can be helpful for
-      # debugging"), appending it to CMAKE_CXX_FLAGS_RELEASE, so no -D can
-      # outrank it -- it is always last on the command line.  /Zi writes a
-      # separate PDB, and under sccache the parallel writes collide even with
-      # /FS already present:
-      #
-      #   fatal error C1041: cannot open program database ... vc140.pdb;
-      #   if multiple CL.EXE write to the same .PDB file, please use /FS
-      #
-      # _CL_ appends after the command line, and MSVC honours the last debug
-      # format flag it sees, so this makes /Z7 win.  Debug info goes into the
-      # object instead of a PDB, which removes the collision and is also the
-      # form sccache can actually cache.
-      #
-      # Spelled -Z7, not /Z7.  The build runs under Git bash, and MSYS rewrites
-      # environment values that look like absolute POSIX paths when it hands
-      # them to a native program, so /Z7 reaches cl.exe as something like
-      # 'C:/Program Files/Git/Z7' and it tries to compile that as two source
-      # files.  MSVC accepts either prefix; only the dash form survives the
-      # trip.
-      _CL_: -Z7
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
       # GitHub allows a repository 10 GB of cache in total, across every entry.
       # The cleanup step at the end of the job keeps one generation per leg, so
@@ -353,21 +331,64 @@ jobs:
           if [ -n "$PACKAGES" ]; then
             up_to="--packages-up-to $PACKAGES"
           fi
+
+          common=(
+            --merge-install
+            --parallel-workers ${{ matrix.parallel-workers }}
+            --event-handlers console_cohesion+
+          )
+          cmake_args=(
+            -GNinja
+            --no-warn-unused-cli
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH:bool=TRUE
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+            -DSTACK_DETAILS_AUTO_DETECT:bool=FALSE
+            -DSTACK_DETAILS_BFD:bool=FALSE
+            -Wno-deprecated
+          )
+
+          # gz-cmake puts /Zi in its MSVC release flags on purpose ("does not
+          # impact performance and can be helpful for debugging"), appending it
+          # to CMAKE_CXX_FLAGS_RELEASE so it always lands last and no -D can
+          # outrank it.  /Zi writes a separate PDB and the parallel writes
+          # collide underneath sccache, even with /FS already present:
+          #
+          #   fatal error C1041: cannot open program database ... vc140.pdb
+          #
+          # _CL_ appends after the command line and MSVC honours the last debug
+          # format flag, so -Z7 wins and the debug info goes into the object
+          # instead.  (Dash, not slash: MSYS rewrites values that look like
+          # absolute POSIX paths, and /Z7 reaches cl.exe as C:/Program Files/...)
+          #
+          # It has to stay scoped to these packages.  -Z7 makes every object it
+          # touches about three times larger, and on a big translation unit that
+          # is not survivable -- setting it workspace-wide put rclcpp's
+          # test_node.cpp over the COFF section limit outright:
+          #
+          #   fatal error C1128: number of sections exceeded object file format
+          #   limit: compile with /bigobj
+          #
+          # So build the gz packages in their own pass.  Only rviz_default_plugins
+          # depends on them, and their own dependencies are the ament_cmake stack
+          # plus spdlog_vendor, which compile very little between them.  The
+          # second pass then builds everything else without _CL_ and finds these
+          # already done.
+          if [ "$RUNNER_OS" = 'Windows' ]; then
+            echo '::group::gz vendor packages (with -Z7)'
+            _CL_=-Z7 pixi run colcon build \
+              "${common[@]}" \
+              --packages-up-to gz_math_vendor gz_utils_vendor \
+              $skip \
+              --cmake-args "${cmake_args[@]}"
+            echo '::endgroup::'
+          fi
+
           pixi run colcon build \
-            --merge-install \
-            --parallel-workers ${{ matrix.parallel-workers }} \
-            --event-handlers console_cohesion+ \
+            "${common[@]}" \
             $up_to \
             $skip \
-            --cmake-args \
-              -GNinja \
-              --no-warn-unused-cli \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_BUILD_WITH_INSTALL_RPATH:bool=TRUE \
-              -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-              -DSTACK_DETAILS_AUTO_DETECT:bool=FALSE \
-              -DSTACK_DETAILS_BFD:bool=FALSE \
-              -Wno-deprecated
+            --cmake-args "${cmake_args[@]}"
 
       - name: Test
         working-directory: ${{ matrix.workdir }}
@@ -481,10 +502,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           LEG: ${{ matrix.name }}
           ZENOH_KEY: ${{ steps.zenoh-key.outputs.key }}
+          REF: ${{ github.ref }}
         run: |
-          query='per_page=100&sort=created_at&direction=desc'
-          entries=$(gh api "repos/$GITHUB_REPOSITORY/actions/caches?$query" \
-            --jq '.actions_caches[] | "\(.id) \(.key)"') || exit 0
+          # Only ever touch caches belonging to this ref.  GitHub scopes cache
+          # *restores* by ref -- a pull request can read its own caches and the
+          # base branch's, but not a sibling branch's -- while this REST listing
+          # is repository-wide and will happily delete across refs.  Pruning
+          # without the filter means two open pull requests destroy each other's
+          # caches while being unable to use them, and both start cold forever.
+          entries=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&sort=created_at&direction=desc" \
+            --jq '.actions_caches[] | select(.ref == env.REF) | "\(.id) \(.key)"') || exit 0
+          if [ -z "$entries" ]; then
+            echo "no caches for $REF"; exit 0
+          fi
 
           # prune <prefix> <how many to keep> [key to never delete]
           prune() {
