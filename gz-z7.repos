@@ -1,0 +1,14 @@
+# Supplemental repos for the ci.ros2.org Windows compiler cache experiment.
+#
+# vcs import runs over ros2.repos first and this file second, both with
+# --force, so this entry replaces the gz_cmake_vendor that ros2.repos pins.
+#
+# The branch points gz_cmake_vendor at gazebosim/gz-cmake
+# mjcarroll/z7-instead-of-zi, which uses /Z7 rather than /Zi.  gz-cmake is
+# installed by gz_cmake_vendor and found by gz_math_vendor and gz_utils_vendor
+# through CMAKE_PREFIX_PATH, so fixing it here fixes all three.
+repositories:
+  gazebo-release/gz_cmake_vendor:
+    type: git
+    url: https://github.com/gazebo-release/gz_cmake_vendor.git
+    version: mjcarroll/test-z7
