@@ -390,9 +390,24 @@ jobs:
             $skip \
             --cmake-args "${cmake_args[@]}"
 
+      # Runs on the nightly as well as on request.  Not on pull requests yet:
+      # a cold build is already two hours and the full suite is another
+      # unmeasured stretch on top, and timeout-minutes is close to the six
+      # hours GitHub allows a hosted job.  Once the nightly has established
+      # what the suite actually costs here, this can widen.
+      #
+      # continue-on-error on purpose.  A clean run of this suite is not a green
+      # one: the last full local run was 48061 tests with 6 errors and 23
+      # failures, none of them related to the change under test.  Gating the
+      # job on that would paint the workflow red permanently and teach everyone
+      # to ignore it.  The step still shows its own failure, the counts land in
+      # the job summary, and the XML is uploaded -- so the results are visible
+      # without being load-bearing.  Tighten this to a real gate once there is
+      # a baseline to compare against.
       - name: Test
         working-directory: ${{ matrix.workdir }}
-        if: inputs.run-tests
+        if: inputs.run-tests || github.event_name == 'schedule'
+        continue-on-error: true
         shell: bash
         run: |
           up_to=""
@@ -405,6 +420,32 @@ jobs:
             $up_to \
             $PACKAGES_SKIP
           pixi run colcon test-result --verbose
+
+      - name: Summarise test results
+        working-directory: ${{ matrix.workdir }}
+        if: always() && (inputs.run-tests || github.event_name == 'schedule')
+        continue-on-error: true
+        shell: bash
+        run: |
+          {
+            echo "### ${{ matrix.name }}"
+            echo
+            echo '```'
+            pixi run colcon test-result 2>&1 | tail -25 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: always() && (inputs.run-tests || github.event_name == 'schedule')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-${{ matrix.name }}
+          # Workspace-relative, like the log upload below.  Not prefixed with
+          # matrix.workdir: upload-artifact resolves against github.workspace,
+          # and W: is a subst of it, so one path serves both legs.
+          path: build/**/test_results/**/*.xml
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Report compiler cache statistics
         working-directory: ${{ matrix.workdir }}
