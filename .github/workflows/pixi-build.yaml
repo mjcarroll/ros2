@@ -421,19 +421,24 @@ jobs:
             $PACKAGES_SKIP
           pixi run colcon test-result --verbose
 
-      - name: Summarise test results
+      # Reads the JUnit XML colcon leaves in build/*/test_results and reports it
+      # where GitHub will actually show it: a table in the job summary, and
+      # ::error / ::warning annotations that attach to the run itself, so a
+      # failure is visible from the checks list without downloading anything.
+      #
+      # Deliberately no third-party test-reporter action.  Every action here is
+      # pinned to a SHA, and GitHub has no native JUnit ingestion, so the choice
+      # was a new supply-chain dependency or forty lines of stdlib XML parsing.
+      # Annotations and step summaries are both native, so this needs neither
+      # extra permissions nor a token, and works the same on a fork.
+      - name: Report test results
         working-directory: ${{ matrix.workdir }}
         if: always() && (inputs.run-tests || github.event_name == 'schedule')
         continue-on-error: true
         shell: bash
-        run: |
-          {
-            echo "### ${{ matrix.name }}"
-            echo
-            echo '```'
-            pixi run colcon test-result 2>&1 | tail -25 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          LEG: ${{ matrix.name }}
+        run: pixi run python .github/scripts/report_test_results.py
 
       - name: Upload test results
         if: always() && (inputs.run-tests || github.event_name == 'schedule')
