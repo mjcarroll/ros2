@@ -1,0 +1,593 @@
+---
+name: Pixi Build
+
+# Builds the ROS 2 workspace in the pixi environment described by pixi.toml.
+# This is not a replacement for ci.ros2.org -- it is a signal on whether a
+# change to pixi.toml or ros2.repos still yields an environment that can
+# actually build ROS 2, on both of the platforms pixi.toml targets.
+#
+# This used to build only --packages-up-to a handful of leaves, because the
+# runners did not have the disk for the whole workspace.  They do now: the
+# hosted images report 141 GB free on Windows and 79 GB free on Linux, against
+# a full workspace that occupies roughly 35 GB of build and install trees.
+# Dispatching the workflow manually can still narrow it to a subset.
+
+on:
+  pull_request:
+    paths:
+      - 'pixi.toml'
+      - 'ros2.repos'
+      - '.github/workflows/pixi-build.yaml'
+  workflow_dispatch:
+    inputs:
+      packages-up-to:
+        description: 'Space separated packages to build up to (empty builds the whole workspace)'
+        type: string
+        default: ''
+      run-tests:
+        description: 'Run colcon test after building'
+        type: boolean
+        default: false
+  schedule:
+    # Daily, to catch conda-forge drift in the loosely pinned dependencies.
+    - cron: '0 7 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    # Only this repository has a reason to run the nightly.
+    if: github.event_name != 'schedule' || github.repository == 'ros2/ros2'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      # Required by the cache cleanup step below.
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            os: ubuntu-latest
+            # GitHub's Ubuntu runners ship PowerShell, and colcon-powershell
+            # (PRIORITY 300) then outranks colcon-core's sh extension
+            # (PRIORITY 200) as the primary shell.  Its environment hooks
+            # hardcode a backslash separator, so PYTHONPATH is emitted as
+            # 'install\lib/python3.12/site-packages' and nothing downstream
+            # of a Python package can be imported.
+            extension-blocklist: colcon_core.shell.powershell
+            workdir: '.'
+            parallel-workers: '4'
+          - name: windows
+            os: windows-latest
+            extension-blocklist: ''
+            workdir: 'W:\'
+            parallel-workers: '4'
+    env:
+      # Empty means the whole workspace; a manual dispatch can narrow it.
+      PACKAGES: ${{ inputs.packages-up-to || '' }}
+      # The LTTng stack is skipped on both platforms, for two different
+      # reasons.  Windows has no LTTng at all.  Linux does, but lttngpy needs
+      # liblttng-ctl and conda-forge only packages lttng-ust -- there is no
+      # lttng-tools or liblttng-ctl feedstock -- so pkg_check_modules cannot
+      # find lttng-ctl and the package fails to configure.  Everything below
+      # is lttngpy or something that depends on it; the tracetools C library
+      # itself builds fine on Linux against lttng-ust and is deliberately not
+      # in this list.
+      #
+      # This does mean the pixi environment gives no coverage of ROS 2 tracing
+      # on Linux, unlike a rosdep-provisioned Ubuntu where it builds.
+      PACKAGES_SKIP: >-
+        --packages-skip lttngpy tracetools_trace ros2trace
+        tracetools_launch test_ros2trace test_tracetools
+        test_tracetools_launch tracetools_test
+      COLCON_EXTENSION_BLOCKLIST: ${{ matrix.extension-blocklist }}
+      # CMAKE_<LANG>_COMPILER_LAUNCHER only reaches the C and C++ compilers.
+      # zenoh_cpp_vendor builds several hundred Rust crates through cargo,
+      # which was 26 minutes of the Windows build and two thirds of a warm
+      # Linux one, so wrap rustc too.  sccache refuses to cache incremental
+      # compilation, hence CARGO_INCREMENTAL.
+      # Passed as environment rather than -D on purpose: CMake initialises
+      # CMAKE_<LANG>_COMPILER_LAUNCHER from the environment variable of the
+      # same name, so this also reaches the nested configures that
+      # ExternalProject_Add and ament_vendor run.  ament_vendor forwards 22
+      # variables to its sub-builds and the launchers are not among them,
+      # so with -D alone every vendor package compiles uncached.
+      CMAKE_C_COMPILER_LAUNCHER: sccache
+      CMAKE_CXX_COMPILER_LAUNCHER: sccache
+      # zenoh-c's release profile sets lto = "fat" and codegen-units = 1,
+      # which serialises codegen and then runs one whole-program optimisation
+      # pass over roughly a thousand crates.  cargo reported 18m 42s of a
+      # 19m 11s package on Windows.  No per-invocation cache can touch that,
+      # which is why sccache made no difference to it across five runs.
+      #
+      # This job asks whether the workspace compiles and links, not how fast
+      # the result runs, so trade the optimisation for parallel codegen.
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
+      RUSTC_WRAPPER: sccache
+      CARGO_INCREMENTAL: '0'
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
+      # GitHub allows a repository 10 GB of cache in total, across every entry.
+      # The cleanup step at the end of the job keeps one generation per leg, so
+      # the standing cost is two sccache entries plus about 170 MB of cargo and
+      # zenoh, which puts the ceiling for this value a little under 5 GB.
+      #
+      # 2G was already saturated by the old --packages-up-to subset -- runs
+      # reported a cache size of exactly 2 GiB -- and the whole workspace is
+      # roughly twice the compile requests, so keeping 2G here would just make
+      # the cache evict itself mid-run and undo the hit rate.
+      SCCACHE_CACHE_SIZE: 4G
+    steps:
+      - name: Clone project
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Build from a substituted drive so that every absolute path baked into
+      # the build -- and so into sccache's hashes -- is the same here as it is
+      # on a developer's machine, instead of depending on where the runner
+      # happened to check the workspace out.  It also buys back the thirteen
+      # characters of MAX_PATH that 'D:\a\ros2\ros2' costs over 'W:'.
+      - name: Map the workspace onto a substituted drive
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          if not exist W:\ subst W: "%GITHUB_WORKSPACE%"
+          dir W:\
+
+      # ament and rosidl generate deeply nested paths that overrun MAX_PATH.
+      # The ros2/ci Windows images do the same thing.
+      - name: Enable long paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-ItemProperty `
+            -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
+            -Name 'LongPathsEnabled' -Value 1 -PropertyType DWORD -Force
+          git config --system core.longpaths true
+
+      # Ninja needs cl.exe on the PATH.  The Visual Studio generator is not an
+      # option here: CMake only honours <LANG>_COMPILER_LAUNCHER, and therefore
+      # sccache, for the Ninja and Makefile generators.
+      - name: Set up the MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+
+      # Defender scans every object file, library and Rust rlib as it is
+      # written, which is a lot of synchronous I/O across a build of this
+      # shape.  The runner is ephemeral and builds only what this workflow
+      # checked out, so exclude the workspace.
+      - name: Exclude the workspace from Defender
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath '${{ github.workspace }}' -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionPath 'W:' -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionProcess 'cl.exe','link.exe','rustc.exe','sccache.exe' -ErrorAction SilentlyContinue
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347 # v0.10.1
+        with:
+          # pixi.lock is not committed, so there is no stable key to cache the
+          # environment against.  It is installed explicitly below instead.
+          run-install: false
+          cache: false
+
+      # The compiler cache is the only thing worth carrying between runs.  The
+      # package downloads would cost more disk than they save wall clock, and
+      # disk is the binding constraint on these runners.
+      # Leg names must not prefix one another: restore-keys matches by prefix
+      # and returns the newest hit, so a leg called 'linux' would happily
+      # restore a 'linux-amd64' cache and then miss on every lookup.  The
+      # cleanup step at the end of the job matches the same way, and a leg
+      # whose name prefixes another's would delete that other leg's caches.
+      - name: Restore the compiler cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: sccache-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: |
+            sccache-${{ matrix.name }}-
+
+      # zenoh_c pulls roughly 350 crates and a git dependency on every run.
+      # None of that is compilation, so no amount of sccache touches it.
+      - name: Restore the cargo registry
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: |
+            cargo-${{ matrix.name }}-
+
+      - name: Install the pixi environment
+        working-directory: ${{ matrix.workdir }}
+        run: pixi install --color never
+
+      # Two copies of GNU coreutils' link.exe end up ahead of the MSVC tools
+      # on PATH: one from the pixi environment's git package, and one from the
+      # runner's own Git for Windows, which lands on PATH because GitHub's
+      # `bash` is Git Bash.  CMake is unaffected, since it resolves an absolute
+      # CMAKE_LINKER at configure time, but cargo looks link.exe up by name and
+      # zenoh_c then fails with "/usr/bin/link: extra operand".  Setting
+      # CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER is not a way out: zenoh_c
+      # forwards it into a nested cargo --config, where the backslashes in the
+      # path are not valid TOML.  Nothing in a ROS 2 build wants coreutils'
+      # link, so take both out of the way.
+      - name: Disable the coreutils link.exe
+        working-directory: ${{ matrix.workdir }}
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          disable() {
+            if [ -f "$1" ]; then
+              mv "$1" "$1.disabled"
+              echo "Renamed $1"
+            else
+              echo "Not present, skipping: $1"
+            fi
+          }
+          disable '.pixi/envs/default/Library/usr/bin/link.exe'
+          disable '/c/Program Files/Git/usr/bin/link.exe'
+          echo "link.exe now resolves to: $(command -v link.exe || echo 'nothing')"
+
+      - name: Import the ROS 2 sources
+        working-directory: ${{ matrix.workdir }}
+        shell: bash
+        run: |
+          mkdir -p src
+          pixi run vcs import --input ros2.repos --shallow --workers 8 src
+
+      # zenoh_cpp_vendor pins zenoh-c and zenoh-cpp to exact commits, so when
+      # neither those nor the toolchain have moved, the library it produces is
+      # byte for byte the one we built last time.  Its build directory is 4.1 GB
+      # and what it installs is 40 MB, so cache the product, not the build.
+      #
+      # The pinned commits live in the vendor package's CMakeLists, which does
+      # not exist until vcs import has run, so the key cannot be a hashFiles()
+      # expression on the cache step itself.
+      #
+      # Take the rust pin out of pixi.toml rather than hashing the whole file.
+      # This workflow runs on changes to pixi.toml, so a key over the entire
+      # file is invalidated by the very edit that triggered the run, and the
+      # cache then misses on exactly the runs it exists to help.  Nothing else
+      # in pixi.toml reaches this build: zenoh is compiled by the pinned rustc,
+      # and its C++ side by the runner image's toolchain, which pixi does not
+      # supply.  A toolchain bump in the image is therefore not covered here,
+      # same as it is not covered for the compiler cache.
+      - name: Work out the zenoh cache key
+        id: zenoh-key
+        working-directory: ${{ matrix.workdir }}
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha() { sha256sum "$@"; }
+          else
+            sha() { shasum -a 256 "$@"; }
+          fi
+          rust_pin=$(grep -E '^[[:space:]]*rust[[:space:]]*=' pixi.toml || true)
+          if [ -z "$rust_pin" ]; then
+            echo 'No rust pin found in pixi.toml; the zenoh cache key would' >&2
+            echo 'not describe the toolchain that built it.' >&2
+            exit 1
+          fi
+          pins=$( { sha src/ros2/rmw_zenoh/zenoh_cpp_vendor/CMakeLists.txt
+                    echo "$rust_pin"; } | sha | cut -c1-16)
+          profile="lto$CARGO_PROFILE_RELEASE_LTO-cgu$CARGO_PROFILE_RELEASE_CODEGEN_UNITS"
+          echo "key=zenoh-${{ matrix.name }}-$profile-$pins" >> "$GITHUB_OUTPUT"
+
+      # Exact matches only.  A restore-key prefix would happily hand back a
+      # build of a different zenoh commit, which is the whole thing we are
+      # trying to be careful about.
+      #
+      # Everything zenoh_cpp_vendor installs has to come back, not just the
+      # library: the ament index entries below are written by the package too,
+      # and skipping the build skips writing them.  Keep this list identical to
+      # the one on the save step.
+      - name: Restore the zenoh build
+        id: zenoh-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ github.workspace }}/install/opt/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/colcon-core/packages/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/packages/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/package_run_dependencies/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/parent_prefix_path/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/vendor_packages/zenoh_cpp_vendor
+          key: ${{ steps.zenoh-key.outputs.key }}
+
+      - name: Report available disk space
+        working-directory: ${{ matrix.workdir }}
+        shell: bash
+        run: df -h .
+
+      - name: Build
+        working-directory: ${{ matrix.workdir }}
+        shell: bash
+        run: |
+          skip="$PACKAGES_SKIP"
+          if [ '${{ steps.zenoh-cache.outputs.cache-hit }}' = 'true' ]; then
+            echo 'zenoh is unchanged since the cached build; skipping it'
+            if [ -n "$skip" ]; then
+              skip="$skip zenoh_cpp_vendor"
+            else
+              skip='--packages-skip zenoh_cpp_vendor'
+            fi
+          fi
+          # An empty PACKAGES means the whole workspace, so leave the option off
+          # entirely rather than passing it with no arguments.
+          up_to=""
+          if [ -n "$PACKAGES" ]; then
+            up_to="--packages-up-to $PACKAGES"
+          fi
+
+          common=(
+            --merge-install
+            --parallel-workers ${{ matrix.parallel-workers }}
+            --event-handlers console_cohesion+
+          )
+          cmake_args=(
+            -GNinja
+            --no-warn-unused-cli
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH:bool=TRUE
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+            -DSTACK_DETAILS_AUTO_DETECT:bool=FALSE
+            -DSTACK_DETAILS_BFD:bool=FALSE
+            -Wno-deprecated
+          )
+
+          # gz-cmake puts /Zi in its MSVC release flags on purpose ("does not
+          # impact performance and can be helpful for debugging"), appending it
+          # to CMAKE_CXX_FLAGS_RELEASE so it always lands last and no -D can
+          # outrank it.  /Zi writes a separate PDB and the parallel writes
+          # collide underneath sccache, even with /FS already present:
+          #
+          #   fatal error C1041: cannot open program database ... vc140.pdb
+          #
+          # _CL_ appends after the command line and MSVC honours the last debug
+          # format flag, so -Z7 wins and the debug info goes into the object
+          # instead.  (Dash, not slash: MSYS rewrites values that look like
+          # absolute POSIX paths, and /Z7 reaches cl.exe as C:/Program Files/...)
+          #
+          # It has to stay scoped to these packages.  -Z7 makes every object it
+          # touches about three times larger, and on a big translation unit that
+          # is not survivable -- setting it workspace-wide put rclcpp's
+          # test_node.cpp over the COFF section limit outright:
+          #
+          #   fatal error C1128: number of sections exceeded object file format
+          #   limit: compile with /bigobj
+          #
+          # So build the gz packages in their own pass.  Only rviz_default_plugins
+          # depends on them, and their own dependencies are the ament_cmake stack
+          # plus spdlog_vendor, which compile very little between them.  The
+          # second pass then builds everything else without _CL_ and finds these
+          # already done.
+          if [ "$RUNNER_OS" = 'Windows' ]; then
+            echo '::group::gz vendor packages (with -Z7)'
+            _CL_=-Z7 pixi run colcon build \
+              "${common[@]}" \
+              --packages-up-to gz_math_vendor gz_utils_vendor \
+              $skip \
+              --cmake-args "${cmake_args[@]}"
+            echo '::endgroup::'
+          fi
+
+          pixi run colcon build \
+            "${common[@]}" \
+            $up_to \
+            $skip \
+            --cmake-args "${cmake_args[@]}"
+
+      # Runs on the nightly as well as on request.  Not on pull requests yet:
+      # a cold build is already two hours and the full suite is another
+      # unmeasured stretch on top, and timeout-minutes is close to the six
+      # hours GitHub allows a hosted job.  Once the nightly has established
+      # what the suite actually costs here, this can widen.
+      #
+      # continue-on-error on purpose.  A clean run of this suite is not a green
+      # one: the last full local run was 48061 tests with 6 errors and 23
+      # failures, none of them related to the change under test.  Gating the
+      # job on that would paint the workflow red permanently and teach everyone
+      # to ignore it.  The step still shows its own failure, the counts land in
+      # the job summary, and the XML is uploaded -- so the results are visible
+      # without being load-bearing.  Tighten this to a real gate once there is
+      # a baseline to compare against.
+      - name: Test
+        working-directory: ${{ matrix.workdir }}
+        if: inputs.run-tests || github.event_name == 'schedule'
+        continue-on-error: true
+        shell: bash
+        run: |
+          up_to=""
+          if [ -n "$PACKAGES" ]; then
+            up_to="--packages-up-to $PACKAGES"
+          fi
+          pixi run colcon test \
+            --merge-install \
+            --event-handlers console_cohesion+ \
+            $up_to \
+            $PACKAGES_SKIP
+          pixi run colcon test-result --verbose
+
+      # Reads the JUnit XML colcon leaves in build/*/test_results and reports it
+      # where GitHub will actually show it: a table in the job summary, and
+      # ::error / ::warning annotations that attach to the run itself, so a
+      # failure is visible from the checks list without downloading anything.
+      #
+      # Deliberately no third-party test-reporter action.  Every action here is
+      # pinned to a SHA, and GitHub has no native JUnit ingestion, so the choice
+      # was a new supply-chain dependency or forty lines of stdlib XML parsing.
+      # Annotations and step summaries are both native, so this needs neither
+      # extra permissions nor a token, and works the same on a fork.
+      - name: Report test results
+        working-directory: ${{ matrix.workdir }}
+        if: always() && (inputs.run-tests || github.event_name == 'schedule')
+        continue-on-error: true
+        shell: bash
+        env:
+          LEG: ${{ matrix.name }}
+        run: pixi run python .github/scripts/report_test_results.py
+
+      - name: Upload test results
+        if: always() && (inputs.run-tests || github.event_name == 'schedule')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-${{ matrix.name }}
+          # Workspace-relative, like the log upload below.  Not prefixed with
+          # matrix.workdir: upload-artifact resolves against github.workspace,
+          # and W: is a subst of it, so one path serves both legs.
+          path: build/**/test_results/**/*.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Report compiler cache statistics
+        working-directory: ${{ matrix.workdir }}
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          pixi run sccache --show-stats
+          # Flush the server so the cache directory is consistent when the
+          # post-run cache step picks it up.
+          pixi run sccache --stop-server
+
+      # actions/cache only saves the cache when the job succeeds, and a build
+      # that fell over partway through has still done real work worth keeping
+      # for the next attempt, so save it explicitly instead.
+      #
+      # Gate that on how much is actually in the cache rather than on how the
+      # job ended.  cancel-in-progress means a run can be cancelled seconds
+      # after it starts, and that near-empty cache must not evict a complete
+      # one -- but a full-workspace build that hits timeout-minutes reports as
+      # cancelled too, after hours of real work, and losing that would leave
+      # the cache permanently cold and every subsequent run timing out the same
+      # way.  Size tells those two apart; the job conclusion does not.
+      - name: Measure the compiler cache
+        id: sccache-size
+        if: always()
+        shell: bash
+        run: |
+          kb=$(du -sk "$SCCACHE_DIR" 2>/dev/null | cut -f1)
+          kb=${kb:-0}
+          echo "compiler cache holds ${kb} KB"
+          if [ "$kb" -ge 262144 ]; then
+            echo 'worth-saving=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'worth-saving=false' >> "$GITHUB_OUTPUT"
+            echo 'under 256 MB, not saving over whatever is already stored'
+          fi
+
+      - name: Save the compiler cache
+        if: always() && steps.sccache-size.outputs.worth-saving == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: sccache-${{ matrix.name }}-${{ github.run_id }}
+
+      - name: Save the cargo registry
+        if: success() || failure()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ matrix.name }}-${{ github.run_id }}
+
+      - name: Save the zenoh build
+        if: success() && steps.zenoh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ github.workspace }}/install/opt/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/colcon-core/packages/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/packages/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/package_run_dependencies/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/parent_prefix_path/zenoh_cpp_vendor
+            ${{ github.workspace }}/install/share/ament_index/resource_index/vendor_packages/zenoh_cpp_vendor
+          key: ${{ steps.zenoh-key.outputs.key }}
+
+      # The sccache and cargo keys carry github.run_id, so every run mints a
+      # new entry and nothing ever removes the old one.  GitHub's only cleanup
+      # is LRU eviction once the repository passes 10 GB, and an sccache leg is
+      # ~2 GB, so the previous run's entries were being evicted out from under
+      # the next run: observed hit rates of 4%, 70% and 79% against a healthy
+      # 96%, and a Linux build that took 60 minutes instead of 10.
+      #
+      # Keep the newest entries per leg per kind and drop the rest.  Newest
+      # rather than "everything but this run" on purpose: if the save above was
+      # skipped or failed, the newest is the previous good cache and it
+      # survives.  Each leg only ever touches its own prefix, so the two jobs
+      # cannot race.
+      #
+      # sccache and cargo keep one, because github.run_id means a newer entry
+      # strictly supersedes an older one.  zenoh keeps two: its key is a content
+      # hash, so an older entry is not superseded, it is a different build of a
+      # different source tree.  Two covers rebasing back and forth across a
+      # zenoh_cpp_vendor change without paying to rebuild it -- 9 to 19 minutes
+      # on Windows -- and still bounds the growth.  The entry this run actually
+      # restored is never deleted, however old it is.
+      - name: Drop superseded caches for this leg
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LEG: ${{ matrix.name }}
+          ZENOH_KEY: ${{ steps.zenoh-key.outputs.key }}
+          REF: ${{ github.ref }}
+        run: |
+          # Only ever touch caches belonging to this ref.  GitHub scopes cache
+          # *restores* by ref -- a pull request can read its own caches and the
+          # base branch's, but not a sibling branch's -- while this REST listing
+          # is repository-wide and will happily delete across refs.  Pruning
+          # without the filter means two open pull requests destroy each other's
+          # caches while being unable to use them, and both start cold forever.
+          entries=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&sort=created_at&direction=desc" \
+            --jq '.actions_caches[] | select(.ref == env.REF) | "\(.id) \(.key)"') || exit 0
+          if [ -z "$entries" ]; then
+            echo "no caches for $REF"; exit 0
+          fi
+
+          # prune <prefix> <how many to keep> [key to never delete]
+          prune() {
+            printf '%s\n' "$entries" \
+              | awk -v p="$1" 'index($2, p) == 1 { print $1, $2 }' \
+              | tail -n +"$(( $2 + 1 ))" \
+              | while read -r id key; do
+                  if [ -n "$3" ] && [ "$key" = "$3" ]; then
+                    echo "Keeping $key (in use by this run)"
+                    continue
+                  fi
+                  echo "Deleting superseded cache $key"
+                  gh api --method DELETE \
+                    "repos/$GITHUB_REPOSITORY/actions/caches/$id" || true
+                done
+          }
+
+          prune "sccache-$LEG-" 1
+          prune "cargo-$LEG-" 1
+          prune "zenoh-$LEG-" 2 "$ZENOH_KEY"
+
+      - name: Upload colcon logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: colcon-logs-${{ matrix.name }}
+          path: log/
+          retention-days: 7
+          if-no-files-found: ignore
