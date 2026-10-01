@@ -2,7 +2,7 @@ repositories:
   ament/ament_cmake:
     type: git
     url: https://github.com/ament/ament_cmake.git
-    version: rolling
+    version: mjcarroll/vendor_forward_compiler_launcher
   ament/ament_index:
     type: git
     url: https://github.com/ament/ament_index.git
