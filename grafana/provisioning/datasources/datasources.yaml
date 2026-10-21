@@ -1,0 +1,27 @@
+apiVersion: 1
+datasources:
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '12h'
+        tags:
+          - key: ci.job
+            value: service_namespace
+          - key: ci.build
+            value: service_instance_id
+        filterByTraceID: false
+        filterBySpanID: true
+  - name: Loki
+    uid: loki
+    type: loki
+    url: http://loki:3100
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    url: http://prometheus:9090
+    isDefault: true

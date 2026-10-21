@@ -1,0 +1,532 @@
+{
+ "uid": "ros2-ci-perf",
+ "title": "Performance",
+ "description": "Packages that got slower, test and linter cost, and platform comparison.",
+ "schemaVersion": 39,
+ "version": 3,
+ "timezone": "utc",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "tags": [
+  "ros2",
+  "ci"
+ ],
+ "panels": [
+  {
+   "type": "table",
+   "title": "Packages slower than their usual (latest 3 days vs the 30 day median)",
+   "description": "More than 1.5 times the median and at least 30 s slower. The value is the ratio.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(25, (max by (ci_package, ci_phase)(last_over_time(ci_package_duration_seconds{ci_job=\"$job\", ci_state=\"Finished\"}[3d])) / quantile by (ci_package, ci_phase)(0.5, quantile_over_time(0.5, ci_package_duration_seconds{ci_job=\"$job\", ci_state=\"Finished\"}[30d])) > 1.5) and (max by (ci_package, ci_phase)(last_over_time(ci_package_duration_seconds{ci_job=\"$job\", ci_state=\"Finished\"}[3d])) - quantile by (ci_package, ci_phase)(0.5, quantile_over_time(0.5, ci_package_duration_seconds{ci_job=\"$job\", ci_state=\"Finished\"}[30d])) > 30))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 10
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_agent": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_package": "Package",
+       "ci_phase": "Phase",
+       "Value #A": "Slower by",
+       "Value": "Slower by"
+      },
+      "indexByName": {
+       "ci_package": 0,
+       "ci_phase": 1
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Slower by",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 1
+  },
+  {
+   "type": "timeseries",
+   "title": "Agent-hours per day, by job",
+   "description": "Total build time across all jobs; hangs show as 10 hour builds.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (ci_job)(last_over_time(ci_build_duration_seconds[1d])) / 3600",
+     "legendFormat": "{{ci_job}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A",
+     "interval": "1d"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 12,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "h",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "lineWidth": 1,
+      "barAlignment": 0,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 2
+  },
+  {
+   "type": "stat",
+   "title": "Linters as a share of the test phase",
+   "description": "Time in linter tests (cpplint, flake8, xmllint ...) over test phase wall time. Tests run sequentially in CI, so this is close to the share of the phase.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "100 * sum(last_over_time(ci_test_total_seconds{ci_job=\"$job\", ci_test=~\"cpplint.*|uncrustify|flake8|pep257|xmllint|copyright|lint_cmake|cppcheck|mypy|pyflakes|pycodestyle|clang_tidy|clang_format|pclint|ament_.*\"}[$__range])) / sum(last_over_time(ci_section_duration_seconds{ci_job=\"$job\", ci_kind=\"subsection\", ci_section=\"test\"}[$__range]))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 10,
+    "w": 6,
+    "h": 5
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "noValue": "0",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "yellow"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 3
+  },
+  {
+   "type": "bargauge",
+   "title": "Test time by test name (average per build)",
+   "description": "Names that run in many packages, summed over the build. A linter near the top is a candidate to run once, not per package.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(15, avg by (ci_test)(last_over_time(ci_test_total_seconds{ci_job=\"$job\"}[$__range])))",
+     "legendFormat": "{{ci_test}}",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 6,
+    "y": 10,
+    "w": 18,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 4
+  },
+  {
+   "type": "bargauge",
+   "title": "Slowest individual tests (average)",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(15, avg by (ci_package, ci_test)(avg_over_time(ci_test_duration_seconds{ci_job=\"$job\"}[$__range])))",
+     "legendFormat": "{{ci_package}}: {{ci_test}}",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 15,
+    "w": 12,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 5
+  },
+  {
+   "type": "table",
+   "title": "Biggest gap: $job_a minus $job_b, seconds per package",
+   "description": "Packages that cost the most extra time on the first job compared to the second, e.g. Windows against Linux.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(20, avg by (ci_package, ci_phase)(avg_over_time(ci_package_duration_seconds{ci_job=\"$job_a\",ci_state=\"Finished\"}[$__range])) - avg by (ci_package, ci_phase)(avg_over_time(ci_package_duration_seconds{ci_job=\"$job_b\",ci_state=\"Finished\"}[$__range])))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 15,
+    "w": 12,
+    "h": 10
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_agent": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_package": "Package",
+       "ci_phase": "Phase",
+       "Value #A": "Seconds slower",
+       "Value": "Seconds slower"
+      },
+      "indexByName": {
+       "ci_package": 0,
+       "ci_phase": 1
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Seconds slower",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 6
+  },
+  {
+   "type": "table",
+   "title": "Slowest relative to $job_b: ratio, packages over 30 s",
+   "description": "How many times slower the first job is.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(20, (avg by (ci_package, ci_phase)(avg_over_time(ci_package_duration_seconds{ci_job=\"$job_a\",ci_state=\"Finished\"}[$__range])) / avg by (ci_package, ci_phase)(avg_over_time(ci_package_duration_seconds{ci_job=\"$job_b\",ci_state=\"Finished\"}[$__range]))) and (avg by (ci_package, ci_phase)(avg_over_time(ci_package_duration_seconds{ci_job=\"$job_a\",ci_state=\"Finished\"}[$__range])) > 30))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 25,
+    "w": 24,
+    "h": 9
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_agent": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_package": "Package",
+       "ci_phase": "Phase",
+       "Value #A": "Times slower",
+       "Value": "Times slower"
+      },
+      "indexByName": {
+       "ci_package": 0,
+       "ci_phase": 1
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Times slower",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 7
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "name": "job",
+    "label": "Job",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "refresh": 2,
+    "query": {
+     "query": "label_values(ci_build_duration_seconds, ci_job)",
+     "refId": "job"
+    },
+    "current": {
+     "text": "nightly_win_rel",
+     "value": "nightly_win_rel"
+    },
+    "sort": 1
+   },
+   {
+    "name": "job_a",
+    "label": "Compare",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "refresh": 2,
+    "query": {
+     "query": "label_values(ci_build_duration_seconds, ci_job)",
+     "refId": "job_a"
+    },
+    "sort": 1,
+    "current": {
+     "text": "nightly_win_rel",
+     "value": "nightly_win_rel"
+    }
+   },
+   {
+    "name": "job_b",
+    "label": "Against",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "refresh": 2,
+    "query": {
+     "query": "label_values(ci_build_duration_seconds, ci_job)",
+     "refId": "job_b"
+    },
+    "sort": 1,
+    "current": {
+     "text": "nightly_linux_release",
+     "value": "nightly_linux_release"
+    }
+   }
+  ]
+ },
+ "links": [
+  {
+   "type": "dashboards",
+   "tags": [
+    "ros2"
+   ],
+   "title": "ROS 2 CI dashboards",
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ]
+}

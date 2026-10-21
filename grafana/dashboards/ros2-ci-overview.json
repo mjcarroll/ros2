@@ -1,0 +1,546 @@
+{
+ "uid": "ros2-ci-overview",
+ "title": "ROS 2 CI overview",
+ "description": "Builds, hangs and slow packages; click a trace id to open a build timeline.",
+ "schemaVersion": 39,
+ "version": 3,
+ "timezone": "utc",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "tags": [
+  "ros2",
+  "ci"
+ ],
+ "panels": [
+  {
+   "type": "timeseries",
+   "title": "Build duration (minutes)",
+   "description": "One point per build at its end time. 600 min is the Jenkins timeout.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_build_duration_seconds{ci_job=\"$job\"}[$__interval]) / 60",
+     "legendFormat": "#{{ci_build}} {{ci_result}} on {{ci_agent}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "m",
+     "custom": {
+      "drawStyle": "points",
+      "pointSize": 9,
+      "showPoints": "always",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 1
+  },
+  {
+   "type": "timeseries",
+   "title": "Failed tests per build",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_tests_failed{ci_job=\"$job\"}[$__interval])",
+     "legendFormat": "#{{ci_build}} on {{ci_agent}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "points",
+      "pointSize": 9,
+      "showPoints": "always",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 2
+  },
+  {
+   "type": "table",
+   "title": "Builds - click \"Open trace\" for the build timeline",
+   "description": "Each row is one build. The trace shows the Docker image build, setup, the colcon build and test phases, and the slow or failed packages and tests.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_build_result{ci_job=\"$job\"}[$__range])",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 8,
+    "w": 24,
+    "h": 8
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_build": "Build",
+       "ci_trace_id": "Open trace",
+       "ci_result": "Result",
+       "ci_agent": "Agent",
+       "ci_package": "Package",
+       "ci_phase": "Phase",
+       "ci_state": "State",
+       "Value #A": "Value",
+       "Value": "Value"
+      },
+      "indexByName": {
+       "ci_build": 0,
+       "ci_result": 1,
+       "ci_agent": 2,
+       "ci_trace_id": 3
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Build",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Open trace"
+      },
+      "properties": [
+       {
+        "id": "links",
+        "value": [
+         {
+          "title": "Open build timeline",
+          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22${__value.raw}%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-30d%22%2C%22to%22%3A%22now%22%7D%7D%7D",
+          "targetBlank": true
+         }
+        ]
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 3
+  },
+  {
+   "type": "bargauge",
+   "title": "Slowest packages in the selected time range",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(15, max by (ci_package, ci_phase) (max_over_time(ci_package_duration_seconds{ci_job=\"$job\"}[$__range])))",
+     "legendFormat": "{{ci_package}} ({{ci_phase}})",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 16,
+    "w": 12,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 4
+  },
+  {
+   "type": "timeseries",
+   "title": "Duration over time: $package",
+   "description": "Pick the package at the top. State Unfinished means the build ended while it was still running (a hang, cut off by the timeout).",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_package_duration_seconds{ci_job=\"$job\", ci_package=\"$package\"}[$__interval])",
+     "legendFormat": "{{ci_phase}} {{ci_state}} on {{ci_agent}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 16,
+    "w": 12,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "drawStyle": "points",
+      "pointSize": 9,
+      "showPoints": "always",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 5
+  },
+  {
+   "type": "table",
+   "title": "Failed or unfinished packages (hangs) - click \"Open trace\"",
+   "description": "Packages that did not finish normally. Unfinished = still running at the timeout.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max_over_time(ci_package_duration_seconds{ci_job=\"$job\", ci_state!=\"Finished\"}[$__range])",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 26,
+    "w": 24,
+    "h": 6
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_build": "Build",
+       "ci_trace_id": "Open trace",
+       "ci_result": "Result",
+       "ci_agent": "Agent",
+       "ci_package": "Package",
+       "ci_phase": "Phase",
+       "ci_state": "State",
+       "Value #A": "Seconds",
+       "Value": "Seconds"
+      },
+      "indexByName": {
+       "ci_build": 0,
+       "ci_package": 1,
+       "ci_phase": 2,
+       "ci_state": 3,
+       "ci_agent": 4,
+       "ci_trace_id": 5
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Build",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Open trace"
+      },
+      "properties": [
+       {
+        "id": "links",
+        "value": [
+         {
+          "title": "Open build timeline",
+          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22${__value.raw}%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-30d%22%2C%22to%22%3A%22now%22%7D%7D%7D",
+          "targetBlank": true
+         }
+        ]
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 6
+  },
+  {
+   "type": "logs",
+   "title": "Errors and failed tests (console and test reports)",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "queryType": "range",
+     "refId": "A",
+     "expr": "{service_namespace=\"$job\", service_instance_id=~\"$build\"}"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 32,
+    "w": 24,
+    "h": 12
+   },
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending",
+    "enableLogDetails": true
+   },
+   "id": 7
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "name": "job",
+    "label": "Job",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "refresh": 2,
+    "query": {
+     "query": "label_values(ci_build_duration_seconds, ci_job)",
+     "refId": "job"
+    },
+    "current": {
+     "text": "nightly_win_rel",
+     "value": "nightly_win_rel"
+    },
+    "sort": 1
+   },
+   {
+    "name": "package",
+    "label": "Package",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "refresh": 2,
+    "query": {
+     "query": "label_values(ci_package_duration_seconds{ci_job=\"$job\"}, ci_package)",
+     "refId": "package"
+    },
+    "current": {
+     "text": "launch_testing_ros",
+     "value": "launch_testing_ros"
+    },
+    "sort": 1
+   },
+   {
+    "name": "build",
+    "label": "Build (regex)",
+    "type": "textbox",
+    "query": ".+",
+    "current": {
+     "text": ".+",
+     "value": ".+"
+    }
+   }
+  ]
+ },
+ "links": [
+  {
+   "type": "dashboards",
+   "tags": [
+    "ros2"
+   ],
+   "title": "ROS 2 CI dashboards",
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ]
+}

@@ -1,0 +1,279 @@
+{
+ "uid": "ros2-ci-errors",
+ "title": "Errors",
+ "description": "Recurring and new error messages from the console.",
+ "schemaVersion": 39,
+ "version": 3,
+ "timezone": "utc",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "tags": [
+  "ros2",
+  "ci"
+ ],
+ "panels": [
+  {
+   "type": "table",
+   "title": "Rare messages in build $build_n (seen in at most 2 builds)",
+   "description": "Messages in this build that appear in at most two builds in the range: new failure modes or one-off problems. The first builds in a range look rarer.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_error_signature_count{ci_job=\"$job\", ci_build=\"$build_n\"}[$__range]) and on (ci_signature) (count by (ci_signature)(last_over_time(ci_error_signature_count{ci_job=\"$job\"}[$__range])) <= 2)",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 10
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_agent": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_signature": "Error message (numbers and paths normalised)",
+       "Value #A": "Count",
+       "Value": "Count"
+      },
+      "indexByName": {
+       "ci_signature": 0
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Count",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 1
+  },
+  {
+   "type": "table",
+   "title": "Most frequent error messages in the time range",
+   "description": "Counted from the console, before Loki collapses identical lines; only the 40 most common messages per build are kept.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(25, sum by (ci_signature)(last_over_time(ci_error_signature_count{ci_job=\"$job\"}[$__range])))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 10,
+    "w": 24,
+    "h": 11
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_agent": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_signature": "Error message (numbers and paths normalised)",
+       "Value #A": "Count",
+       "Value": "Count"
+      },
+      "indexByName": {
+       "ci_signature": 0
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Count",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 2
+  },
+  {
+   "type": "timeseries",
+   "title": "Error lines per build",
+   "description": "A jump here usually means a new failure mode.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (ci_build)(last_over_time(ci_error_signature_count{ci_job=\"$job\"}[$__interval]))",
+     "legendFormat": "#{{ci_build}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 21,
+    "w": 24,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "lineWidth": 1,
+      "barAlignment": 0,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 3
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "name": "job",
+    "label": "Job",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "refresh": 2,
+    "query": {
+     "query": "label_values(ci_build_duration_seconds, ci_job)",
+     "refId": "job"
+    },
+    "current": {
+     "text": "nightly_win_rel",
+     "value": "nightly_win_rel"
+    },
+    "sort": 1
+   },
+   {
+    "name": "build_n",
+    "label": "Build",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "refresh": 2,
+    "query": {
+     "query": "label_values(ci_build_result{ci_job=\"$job\"}, ci_build)",
+     "refId": "build_n"
+    },
+    "sort": 4,
+    "current": {
+     "text": "",
+     "value": ""
+    }
+   }
+  ]
+ },
+ "links": [
+  {
+   "type": "dashboards",
+   "tags": [
+    "ros2"
+   ],
+   "title": "ROS 2 CI dashboards",
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ]
+}

@@ -1,0 +1,440 @@
+{
+ "uid": "ros2-ci-tests",
+ "title": "Tests and flakiness",
+ "description": "Failing and flaky tests.",
+ "schemaVersion": 39,
+ "version": 3,
+ "timezone": "utc",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "tags": [
+  "ros2",
+  "ci"
+ ],
+ "panels": [
+  {
+   "type": "table",
+   "title": "Most frequently failing tests",
+   "description": "Number of builds in the range in which the test failed.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(25, count by (ci_test_class, ci_test)(last_over_time(ci_test_failure{ci_job=\"$job\"}[$__range])))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 14,
+    "h": 11
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_agent": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_test_class": "Suite",
+       "ci_test": "Test",
+       "ci_status": "Status",
+       "Value #A": "Builds failed",
+       "Value": "Builds failed"
+      },
+      "indexByName": {
+       "ci_test_class": 0,
+       "ci_test": 1
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Builds failed",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 1
+  },
+  {
+   "type": "bargauge",
+   "title": "Failures by suite",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(12, count by (ci_test_class)(last_over_time(ci_test_failure{ci_job=\"$job\"}[$__range])))",
+     "legendFormat": "{{ci_test_class}}",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 14,
+    "y": 0,
+    "w": 10,
+    "h": 11
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 2
+  },
+  {
+   "type": "table",
+   "title": "Failing the longest (builds in a row)",
+   "description": "Jenkins \"age\": consecutive builds the test has been failing as of the latest build in the range.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(25, max by (ci_test_class, ci_test)(last_over_time(ci_test_failure{ci_job=\"$job\"}[$__range])))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 11,
+    "w": 14,
+    "h": 11
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_agent": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_test_class": "Suite",
+       "ci_test": "Test",
+       "ci_status": "Status",
+       "Value #A": "Age",
+       "Value": "Age"
+      },
+      "indexByName": {
+       "ci_test_class": 0,
+       "ci_test": 1
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Age",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 3
+  },
+  {
+   "type": "table",
+   "title": "Flaky candidates (failed in some builds, not all)",
+   "description": "Failed in at least one but not every build in the range.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "(count by (ci_test_class, ci_test)(last_over_time(ci_test_failure{ci_job=\"$job\"}[$__range]))) < scalar(count(last_over_time(ci_build_result{ci_job=\"$job\"}[$__range])))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 14,
+    "y": 11,
+    "w": 10,
+    "h": 11
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_agent": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_test_class": "Suite",
+       "ci_test": "Test",
+       "ci_status": "Status",
+       "Value #A": "Builds failed",
+       "Value": "Builds failed"
+      },
+      "indexByName": {
+       "ci_test_class": 0,
+       "ci_test": 1
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Builds failed",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 4
+  },
+  {
+   "type": "timeseries",
+   "title": "Tests failed per build",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_tests_failed{ci_job=\"$job\"}[$__interval])",
+     "legendFormat": "#{{ci_build}} {{ci_agent}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 22,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "points",
+      "pointSize": 9,
+      "showPoints": "always",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 5
+  },
+  {
+   "type": "timeseries",
+   "title": "Tests skipped per build",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_tests_skipped{ci_job=\"$job\"}[$__interval])",
+     "legendFormat": "#{{ci_build}} {{ci_agent}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 22,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "points",
+      "pointSize": 9,
+      "showPoints": "always",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 6
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "name": "job",
+    "label": "Job",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "refresh": 2,
+    "query": {
+     "query": "label_values(ci_build_duration_seconds, ci_job)",
+     "refId": "job"
+    },
+    "current": {
+     "text": "nightly_win_rel",
+     "value": "nightly_win_rel"
+    },
+    "sort": 1
+   }
+  ]
+ },
+ "links": [
+  {
+   "type": "dashboards",
+   "tags": [
+    "ros2"
+   ],
+   "title": "ROS 2 CI dashboards",
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ]
+}

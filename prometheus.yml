@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 60s
+
+storage:
+  tsdb:
+    # Backfilled builds write old samples into series that already have newer ones.
+    out_of_order_time_window: 8760h

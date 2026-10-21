@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: ros2-ci
+    folder: ROS 2 CI
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

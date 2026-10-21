@@ -1,0 +1,381 @@
+{
+ "uid": "ros2-ci-regressions",
+ "title": "Regressions: what changed",
+ "description": "For a build: which tests failed since when, and which repos changed.",
+ "schemaVersion": 39,
+ "version": 3,
+ "timezone": "utc",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "tags": [
+  "ros2",
+  "ci"
+ ],
+ "panels": [
+  {
+   "type": "table",
+   "title": "Tests failing in build $build_n, and since which build",
+   "description": "Newest regressions first. \"Failing since\" is the build in which the test first failed; pick that build above to see which repos changed in it.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_test_failure{ci_job=\"$job\", ci_build=\"$build_n\"}[$__range])",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 11
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_agent": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_prev_build": true
+      },
+      "renameByName": {
+       "ci_first_failed_build": "Failing since build",
+       "ci_test_class": "Suite",
+       "ci_test": "Test",
+       "ci_status": "Status",
+       "Value #A": "Builds failing",
+       "Value": "Builds failing"
+      },
+      "indexByName": {
+       "ci_first_failed_build": 0,
+       "ci_test_class": 1,
+       "ci_test": 2,
+       "ci_status": 3
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Failing since build",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 1
+  },
+  {
+   "type": "table",
+   "title": "Repos that changed since the previous build, in build $build_n",
+   "description": "Nightlies build the head of every repo, so a regression is some change in this list. Click New to open the compare view on GitHub.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_repo_changed{ci_job=\"$job\", ci_build=\"$build_n\"}[$__range])",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 11,
+    "w": 24,
+    "h": 10
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_agent": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_repo": "Repo",
+       "ci_old": "Old",
+       "ci_new": "New",
+       "ci_prev_build": "Previous build",
+       "ci_url": "URL",
+       "Value #A": "Changed",
+       "Value": "Changed"
+      },
+      "indexByName": {
+       "ci_repo": 0,
+       "ci_old": 1,
+       "ci_new": 2,
+       "ci_prev_build": 3,
+       "ci_url": 4
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Repo",
+        "desc": false
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "New"
+      },
+      "properties": [
+       {
+        "id": "links",
+        "value": [
+         {
+          "title": "Compare on GitHub",
+          "targetBlank": true,
+          "url": "${__data.fields.URL}/compare/${__data.fields.Old}...${__value.raw}"
+         }
+        ]
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 2
+  },
+  {
+   "type": "timeseries",
+   "title": "Repos changed per build",
+   "description": "Builds with many changed repos are harder to bisect.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count by (ci_build)(last_over_time(ci_repo_changed{ci_job=\"$job\"}[$__interval]))",
+     "legendFormat": "#{{ci_build}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 21,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "lineWidth": 1,
+      "barAlignment": 0,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 3
+  },
+  {
+   "type": "status-history",
+   "title": "Test history: the most frequently failing tests, build by build",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "description": "Red = failing in a build that day. A solid run is a real regression; scattered cells are flaky.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max by (ci_test)(last_over_time(ci_test_failure{ci_job=\"$job\"}[1d]) and on (ci_test_class, ci_test) topk(15, count by (ci_test_class, ci_test)(last_over_time(ci_test_failure{ci_job=\"$job\"}[$__range]))))",
+     "legendFormat": "{{ci_test}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A",
+     "interval": "1d"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 21,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "fillOpacity": 85,
+      "lineWidth": 1
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showValue": "never",
+    "rowHeight": 0.9,
+    "legend": {
+     "showLegend": false
+    }
+   },
+   "id": 4
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "name": "job",
+    "label": "Job",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "refresh": 2,
+    "query": {
+     "query": "label_values(ci_build_duration_seconds, ci_job)",
+     "refId": "job"
+    },
+    "current": {
+     "text": "nightly_win_rel",
+     "value": "nightly_win_rel"
+    },
+    "sort": 1
+   },
+   {
+    "name": "build_n",
+    "label": "Build",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "refresh": 2,
+    "query": {
+     "query": "label_values(ci_build_result{ci_job=\"$job\"}, ci_build)",
+     "refId": "build_n"
+    },
+    "sort": 4,
+    "current": {
+     "text": "",
+     "value": ""
+    }
+   }
+  ]
+ },
+ "links": [
+  {
+   "type": "dashboards",
+   "tags": [
+    "ros2"
+   ],
+   "title": "ROS 2 CI dashboards",
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ]
+}
