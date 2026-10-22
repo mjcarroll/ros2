@@ -4,7 +4,7 @@
  "description": "Every nightly job side by side: scorecard, worst result per day, hours lost to hangs.",
  "schemaVersion": 39,
  "version": 3,
- "timezone": "utc",
+ "timezone": "browser",
  "time": {
   "from": "now-30d",
   "to": "now"

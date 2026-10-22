@@ -4,7 +4,7 @@
  "description": "Packages that got slower, test and linter cost, and platform comparison.",
  "schemaVersion": 39,
  "version": 3,
- "timezone": "utc",
+ "timezone": "browser",
  "time": {
   "from": "now-30d",
   "to": "now"

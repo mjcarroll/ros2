@@ -159,7 +159,9 @@ def query_var(name, label, expr, default, sort=1):
 def write(uid, title, panels, package=False, description='', job=True, extra_vars=None):
     dashboard = {
         'uid': uid, 'title': title, 'description': description, 'schemaVersion': 39, 'version': 3,
-        'timezone': 'utc', 'time': {'from': 'now-30d', 'to': 'now'}, 'tags': ['ros2', 'ci'],
+        # Browser-local, not UTC: these jobs fire around 04:00 UTC (~11pm US-Central), so a UTC
+        # label puts last night's build under today's date and makes it look not-yet-run.
+        'timezone': 'browser', 'time': {'from': 'now-30d', 'to': 'now'}, 'tags': ['ros2', 'ci'],
         'panels': panels.items, 'templating': {'list': variables(package, job) + (extra_vars or [])},
         'links': [{'type': 'dashboards', 'tags': ['ros2'], 'title': 'ROS 2 CI dashboards',
                    'asDropdown': True, 'includeVars': True, 'keepTime': True}]}

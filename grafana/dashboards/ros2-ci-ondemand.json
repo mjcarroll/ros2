@@ -4,7 +4,7 @@
  "description": "ci_*/test_ci_* builds that ci_launcher fans out per PR: trends, who requested them, their scope, and their results.",
  "schemaVersion": 39,
  "version": 3,
- "timezone": "utc",
+ "timezone": "browser",
  "time": {
   "from": "now-30d",
   "to": "now"

@@ -4,7 +4,7 @@
  "description": "Live queue and agent status for ci.ros2.org and build.ros2.org, polled by buildfarm.py (point-in-time, not reconstructed from console logs).",
  "schemaVersion": 39,
  "version": 3,
- "timezone": "utc",
+ "timezone": "browser",
  "time": {
   "from": "now-30d",
   "to": "now"

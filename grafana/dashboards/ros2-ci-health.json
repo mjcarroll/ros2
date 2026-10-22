@@ -4,7 +4,7 @@
  "description": "Result mix, hung builds and agent-hours lost, test volume.",
  "schemaVersion": 39,
  "version": 3,
- "timezone": "utc",
+ "timezone": "browser",
  "time": {
   "from": "now-30d",
   "to": "now"
