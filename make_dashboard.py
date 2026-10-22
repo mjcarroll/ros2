@@ -579,6 +579,18 @@ def errors():
             sort=('Count', True), value_name='Count')
     p.bars('Error lines per build', 'sum by (ci_build)(last_over_time(ci_error_signature_count{ci_job="$job"}[@W]))',
            '#{{ci_build}}', 0, 21, 24, 8, 'short', 'A jump here usually means a new failure mode.')
+    p.bars('Checkout-stage failures by cause',
+           'sum by (ci_cause)(last_over_time(ci_checkout_failure{ci_job="$job"}[@W]))',
+           '{{ci_cause}}', 0, 29, 24, 8, 'short',
+           'Builds that never got past Jenkins\' own git checkout/submodule-update step (no "# BEGIN '
+           'SECTION" ever ran), classified by cause: submodule_clone (a submodule failed to clone), '
+           'network (a generic git/transport error on the main checkout), timeout (the checkout step '
+           'itself was killed after its time limit with no more specific error seen).')
+    p.table('Checkout-stage failures across all jobs in the range (ignores $job)',
+            'count by (ci_job, ci_cause)(last_over_time(ci_checkout_failure[$__range]))',
+            0, 37, 24, 10, ['ci_job', 'ci_cause'], {'ci_job': 'Job', 'ci_cause': 'Cause'},
+            'Farm-wide view: submodule clone wedges and transient network errors during checkout are '
+            'an infra problem, not a per-job one.', sort=('Count', True), value_name='Count')
     write('ros2-ci-errors', 'Errors', p, extra_vars=[BUILD_VAR],
           description='Recurring and new error messages from the console.')
 

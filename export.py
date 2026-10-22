@@ -61,6 +61,20 @@ PACKAGES_ABOVE = re.compile(r'--packages-above(?:-and-dependencies)?\s+(.+?)(?:\
 # fully custom ros2.repos file. Consecutive build numbers there are unrelated people's runs, not
 # incremental progress on one branch, so "repos changed since the previous build" is meaningless.
 ONDEMAND_JOB = re.compile(r'^(ci_|test_ci_)')
+# Taxonomy for Jenkins SCM-checkout failures (git clone/submodule-update, before our own shell script
+# starts, so these lines never fall in any "# BEGIN SECTION"). Order is priority when more than one
+# matches the same build (seen together e.g. ci_linux #31020: a submodule clone wedges, the outer
+# "git submodule update" step hits its 10-minute timeout and gets SIGTERM'd (143), *then* the
+# in-progress clone reports the network error) - most specific/actionable cause wins.
+CHECKOUT_CAUSES = [
+    ('submodule_clone', re.compile(r"into submodule path '[^']*' failed|Failed to clone '[^']+'")),
+    ('network', re.compile(
+        r'fetch-pack: invalid index-pack output|unexpected disconnect while reading sideband packet|'
+        r'fatal: early EOF|Could not read from remote repository|Connection reset by peer|'
+        r"Connection timed out|RPC failed; curl|Couldn't resolve host|"
+        r'Temporary failure in name resolution|fatal: unable to access')),
+    ('timeout', re.compile(r'^ERROR: Timeout after \d+ (?:minute|second)s?\b|\breturned status code 143\b')),
+]
 
 
 def trigger_user(info):
@@ -205,6 +219,7 @@ class Builder:
         tests = []                       # (package, number, name, status, seconds)
         hashes, urls, in_hashes, repo = {}, {}, False, None
         signatures = collections.Counter()
+        checkout_causes_found = set()
         last_ts = self.start
 
         def phase_of(ts):
@@ -226,6 +241,12 @@ class Builder:
             else:
                 text = raw.rstrip('\r\n')
             ts = last_ts
+
+            if open_section is None and not sections:
+                # Still in Jenkins' own SCM checkout, before our shell script's first section.
+                for cause, pattern in CHECKOUT_CAUSES:
+                    if pattern.search(text):
+                        checkout_causes_found.add(cause)
 
             m = SECTION.match(text)
             if m:
@@ -301,6 +322,9 @@ class Builder:
                 phase_at.append((open_sub[1], self.end, open_sub[0]))
 
         result = self.info.get('result') or 'UNKNOWN'
+        # A build that never opened a single section never got past Jenkins' own checkout step.
+        checkout_cause = (next((c for c, _ in CHECKOUT_CAUSES if c in checkout_causes_found), None)
+                          if not sections and result in ('FAILURE', 'ABORTED') else None)
         params = {p['name']: p['value'] for a in self.info.get('actions', [])
                   for p in a.get('parameters', []) if p['name'] in (
                       'CI_BRANCH_TO_TEST', 'CI_CMAKE_BUILD_TYPE', 'CI_ROS_DISTRO', 'CI_USE_CONNEXTDDS',
@@ -335,6 +359,7 @@ class Builder:
             'ci.upstream_job': upstream and upstream['upstreamProject'],
             'ci.upstream_build': upstream and upstream['upstreamBuild'],
             'ci.requested_by': requested_by, 'ci.target_package': target_package,
+            'ci.checkout_cause': checkout_cause,
             **{f'ci.param.{k}': v for k, v in params.items()}},
             error=result in ('FAILURE', 'ABORTED'), links=links)
         if upstream:
@@ -342,6 +367,12 @@ class Builder:
                 'ci_build': self.number, 'ci_trace_id': self.trace_id, 'ci_result': result,
                 'ci_upstream_job': upstream['upstreamProject'],
                 'ci_upstream_build': upstream['upstreamBuild']}))
+        if checkout_cause:
+            self.metrics.append(('ci_checkout_failure', self.end, 1.0, {
+                'ci_cause': checkout_cause, 'ci_result': result, 'ci_build': self.number,
+                'ci_trace_id': self.trace_id}))
+            self.logs.append((self.start, 'ERROR', f'Checkout-stage failure: {checkout_cause}',
+                              {'ci.checkout_cause': checkout_cause}))
         if queued:
             self.span('queue', self.start - queued * 1_000_000, self.start, self.root_id, 'queue',
                       common)
