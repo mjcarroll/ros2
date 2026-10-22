@@ -290,8 +290,8 @@
   },
   {
    "type": "timeseries",
-   "title": "On-demand builds per day, by job",
-   "description": "",
+   "title": "On-demand builds per day, by result",
+   "description": "By job is omitted: ci_launcher fans out to the same ~4 jobs every time in near-equal numbers, so it tracks total volume rather than anything that varies day to day.",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -302,8 +302,8 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "sum by (ci_job)(count_over_time(ci_build_result{ci_server=\"ci\", ci_job=~\"ci_.*|test_ci_.*\"}[1d]))",
-     "legendFormat": "{{ci_job}}",
+     "expr": "sum by (ci_result)(count_over_time(ci_build_result{ci_server=\"ci\", ci_job=~\"ci_.*|test_ci_.*\"}[1d]))",
+     "legendFormat": "{{ci_result}}",
      "instant": false,
      "range": true,
      "format": "time_series",
@@ -331,7 +331,68 @@
       }
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SUCCESS"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "UNSTABLE"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "FAILURE"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "ABORTED"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {

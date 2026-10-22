@@ -456,9 +456,13 @@ def ondemand():
            '{{ci_requested_by}}', 0, 10, 12, 9, 'short', window='1d', interval='1d',
            description='Who clicked "Build" on ci_launcher (or test_ci_launcher); resolved one hop '
                        'up for the ci_linux/ci_windows/... builds it fans out to.')
-    p.bars('On-demand builds per day, by job',
-           f'sum by (ci_job)(count_over_time(ci_build_result{{{OD}}}[@W]))',
-           '{{ci_job}}', 12, 10, 12, 9, 'short', window='1d', interval='1d')
+    p.bars('On-demand builds per day, by result',
+           f'sum by (ci_result)(count_over_time(ci_build_result{{{OD}}}[@W]))',
+           '{{ci_result}}', 12, 10, 12, 9, 'short', window='1d', interval='1d',
+           colors=result_overrides(),
+           description='By job is omitted: ci_launcher fans out to the same ~4 jobs every time in '
+                       'near-equal numbers, so it tracks total volume rather than anything that '
+                       'varies day to day.')
     p.table('Builds - click "Open trace" for the build timeline',
             f'last_over_time(ci_build_result{{{OD}}}[$__range])', 0, 19, 24, 12,
             ['ci_job', 'ci_build', 'ci_result', 'ci_requested_by', 'ci_target_package', 'ci_trace_id'],
