@@ -24,9 +24,20 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
+import github
+
 OTLP = 'http://localhost:4318'
 GRAFANA = 'http://localhost:3300/api/datasources/proxy/uid'
 BATCH = 1000
+# The Collector ACKs a /v1/logs POST as soon as it's queued, before the real write to Loki
+# completes, so an unpaced client can blast requests faster than the single-consumer queue
+# drains. A small per-batch delay keeps submission rate under what Loki can sustain, instead of
+# growing the queue (which risks unbounded memory on a build with hundreds of thousands of lines).
+LOG_POST_DELAY = 0.05
+# A hung process spewing output (seen: one ABORTED Windows build with 3M+ console lines) can
+# overwhelm the pipeline badly enough to drop other builds' data too. Cap it: keep the start and
+# end, which is what's actually useful for diagnosing a failure, and drop the noisy middle.
+MAX_LOG_LINES = 50_000
 
 LINE = re.compile(r'^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})  ?(.*)$')
 SECTION = re.compile(r'^"?# (BEGIN|END) SECTION(?:: (.*?))?"?\s*$')
@@ -46,6 +57,10 @@ ERRORISH = re.compile(
 PKG_MIN_SECONDS = 60.0   # shorter finished packages are folded into counts on their phase span
 TEST_MIN_SECONDS = 30.0  # same for passing tests; failed tests always get a span
 PACKAGES_ABOVE = re.compile(r'--packages-above(?:-and-dependencies)?\s+(.+?)(?:\s+--\S|\s*$)')
+# ci_*/test_ci_* are manually triggered per build: whoever kicks one off picks a branch/sha/tag or a
+# fully custom ros2.repos file. Consecutive build numbers there are unrelated people's runs, not
+# incremental progress on one branch, so "repos changed since the previous build" is meaningless.
+ONDEMAND_JOB = re.compile(r'^(ci_|test_ci_)')
 
 
 def trigger_user(info):
@@ -81,6 +96,40 @@ def save_repos(root, number, repos):
             json.dump(repos, f)
 
 
+def repo_diff_summary(repos, prev_repos):
+    """Human-readable, GitHub-enriched summary of what changed between two repos.json snapshots."""
+    parts = []
+    for r, now in repos.items():
+        before = prev_repos.get(r)
+        if before is None or before['commit'] == now['commit']:
+            continue
+        url = now['url'].removesuffix('.git')
+        commits = github.compare(url, before['commit'], now['commit'])
+        if commits:
+            authors = ', '.join(sorted({c['author'] for c in commits}))
+            parts.append(f'{r} ({len(commits)} commit(s) by {authors}): {commits[-1]["message"]}' +
+                        (f' [+{len(commits) - 1} more]' if len(commits) > 1 else ''))
+        else:
+            parts.append(f'{r} {before["commit"][:8]}..{now["commit"][:8]}')
+    return parts
+
+
+def regression_culprits(root, build_number):
+    """repo_diff_summary() for a specific past build, using its saved repos.json, or None if we
+    don't have that build's (or its predecessor's) repo snapshot on disk."""
+    if root is None:
+        return None
+    path = os.path.join(root, str(build_number), 'repos.json')
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        repos = json.load(f)
+    prev = load_prev_repos(root, build_number)
+    if not prev:
+        return None
+    return repo_diff_summary(repos, prev[1]) or None
+
+
 def epoch_ns(text):
     dt = datetime.strptime(text, '%Y-%m-%d %H:%M:%S.%f').replace(tzinfo=timezone.utc)
     return int(dt.timestamp() * 1000) * 1_000_000
@@ -111,6 +160,7 @@ class Builder:
     def __init__(self, server, job, number, info, console, report, prev=None, cache=None):
         self.server, self.job, self.number = server, job, number
         self.prev, self.cache = prev, cache
+        self.root = os.path.join(cache, server, job) if cache else None
         self.repos = {}
         self.info, self.report = info, report
         self.trace_id = hex_id(f'{server}/{job}/{number}', 16)
@@ -389,12 +439,19 @@ class Builder:
                 for case in suite.get('cases', []):
                     if case.get('status') in ('FAILED', 'REGRESSION'):
                         age = int(case.get('age') or 1)
+                        first_failed = int(self.number) - age + 1
                         self.metrics.append(('ci_test_failure', self.end, float(age), {
-                            'ci_build': self.number, 'ci_first_failed_build': int(self.number) - age + 1,
+                            'ci_build': self.number, 'ci_first_failed_build': first_failed,
                             'ci_test_class': (case.get('className') or '')[:200],
                             'ci_test': (case.get('name') or '')[:200],
                             'ci_status': case.get('status')}))
-                        self.logs.append((self.end, 'ERROR', (case.get('errorDetails') or '')[:1000], {
+                        detail = (case.get('errorDetails') or '')[:1000]
+                        culprits = (None if ONDEMAND_JOB.match(self.job) else
+                                   regression_culprits(self.root, first_failed))
+                        if culprits:
+                            detail += (f'\n\nLikely culprit (repos changed in build #{first_failed}, '
+                                      f'where this first failed):\n' + '\n'.join(culprits))
+                        self.logs.append((self.end, 'ERROR', detail, {
                             'ci.test.class': case.get('className'), 'ci.test.name': case.get('name'),
                             'ci.test.age': case.get('age'), 'ci.test.status': case.get('status'),
                             '_ctx': ('test', case.get('name'))}))
@@ -416,7 +473,7 @@ class Builder:
                 extra['ci.package'], extra['ci.phase'] = ctx[1], ctx[2]
         self.repos = {r.replace('\\', '/'): {'commit': c, 'url': urls.get(r, '')}
                       for r, c in hashes.items()}
-        if self.prev:
+        if self.prev and not ONDEMAND_JOB.match(self.job):
             prev_number, prev_repos = self.prev
             for r, now in self.repos.items():
                 before = prev_repos.get(r)
@@ -426,6 +483,10 @@ class Builder:
                     'ci_build': self.number, 'ci_prev_build': prev_number, 'ci_repo': r,
                     'ci_old': before['commit'][:12], 'ci_new': now['commit'][:12],
                     'ci_url': now['url'].removesuffix('.git')}))
+            summary = repo_diff_summary(self.repos, prev_repos)
+            if summary:
+                self.logs.append((self.end, 'INFO', 'Repos changed since the previous build:\n' +
+                                  '\n'.join(summary), {'ci.kind': 'repos_changed'}))
         if hashes:
             self.logs.append((self.start, 'INFO', json.dumps(hashes, sort_keys=True),
                               {'ci.kind': 'repository_hashes', 'ci.repos': len(hashes)}))
@@ -506,6 +567,18 @@ def load(cache, server, job, number):
                                    encoding='utf-8', errors='replace')
 
 
+def capped_logs(logs):
+    """logs, sorted by time, with a hard ceiling on line count (see MAX_LOG_LINES)."""
+    logs = sorted(logs, key=lambda r: r[0])
+    if len(logs) <= MAX_LOG_LINES:
+        return logs
+    half = MAX_LOG_LINES // 2
+    head, tail = logs[:half], logs[-half:]
+    marker = (head[-1][0], 'ERROR', f'... {len(logs) - 2 * half} lines omitted (console log '
+             f'exceeded {MAX_LOG_LINES} lines; see the Jenkins build for the full log) ...', {})
+    return head + [marker] + tail
+
+
 def export_build(builder, dry_run, metrics_only=False, traces_only=False, logs_only=False):
     tests = sum(1 for s in builder.spans if s['name'].startswith('test '))
     print(f'  {len(builder.spans)} spans ({tests} test), {len(builder.logs)} logs, '
@@ -517,17 +590,19 @@ def export_build(builder, dry_run, metrics_only=False, traces_only=False, logs_o
         post('/v1/metrics', builder.otlp_metrics())
         return
     if logs_only:
-        logs = sorted(builder.logs, key=lambda r: r[0])
+        logs = capped_logs(builder.logs)
         for i in range(0, len(logs), BATCH):
             post('/v1/logs', builder.otlp_logs(logs[i:i + BATCH]))
+            time.sleep(LOG_POST_DELAY)
         return
     for i in range(0, len(builder.spans), BATCH):
         post('/v1/traces', builder.otlp_traces(builder.spans[i:i + BATCH]))
     if traces_only:
         return
-    logs = sorted(builder.logs, key=lambda r: r[0])
+    logs = capped_logs(builder.logs)
     for i in range(0, len(logs), BATCH):
         post('/v1/logs', builder.otlp_logs(logs[i:i + BATCH]))
+        time.sleep(LOG_POST_DELAY)
     post('/v1/metrics', builder.otlp_metrics())
 
 
@@ -552,8 +627,11 @@ def verify(builders, since, traces=True):
                            'otel-collector', 'prometheus', 'loki', 'tempo'],
                           capture_output=True, text=True,
                           cwd=os.path.dirname(os.path.abspath(__file__))).stdout
+    # Deliberately excludes "Rejecting data"/"sending queue is full"/"rate limit exceeded": those
+    # are transient backpressure that the Collector's own retry_on_failure resolves within its
+    # (default 300s) retry window, not real loss. Only count terminal, unretryable failures.
     dropped = [l for l in logs.splitlines() if re.search(
-        r'Dropping data|out of bounds|too old|rejected|entry too far behind', l, re.I)]
+        r'Dropping data|out of bounds|too old|entry too far behind|no schema config found', l, re.I)]
     print(f'  backend rejections in logs: {len(dropped)}')
     for line in dropped[:3]:
         print('   ', line[:240])
