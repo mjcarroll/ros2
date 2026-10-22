@@ -28,7 +28,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "count by (ci_job)(last_over_time(ci_build_result[$__range]))",
+     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\"}[$__range]))",
      "legendFormat": "",
      "instant": true,
      "range": false,
@@ -40,7 +40,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_result=\"SUCCESS\"}[$__range]))",
+     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"SUCCESS\"}[$__range]))",
      "legendFormat": "",
      "instant": true,
      "range": false,
@@ -52,7 +52,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_result=\"UNSTABLE\"}[$__range]))",
+     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"UNSTABLE\"}[$__range]))",
      "legendFormat": "",
      "instant": true,
      "range": false,
@@ -64,7 +64,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_result=\"FAILURE\"}[$__range]))",
+     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"FAILURE\"}[$__range]))",
      "legendFormat": "",
      "instant": true,
      "range": false,
@@ -76,7 +76,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_result=\"ABORTED\"}[$__range]))",
+     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"ABORTED\"}[$__range]))",
      "legendFormat": "",
      "instant": true,
      "range": false,
@@ -88,7 +88,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "quantile by (ci_job)(0.5, last_over_time(ci_build_duration_seconds[$__range])) / 60",
+     "expr": "quantile by (ci_job)(0.5, last_over_time(ci_build_duration_seconds{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\"}[$__range])) / 60",
      "legendFormat": "",
      "instant": true,
      "range": false,
@@ -100,7 +100,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "sum by (ci_job)(last_over_time(ci_build_duration_seconds{ci_result=\"ABORTED\"}[$__range])) / 3600",
+     "expr": "sum by (ci_job)(last_over_time(ci_build_duration_seconds{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"ABORTED\"}[$__range])) / 3600",
      "legendFormat": "",
      "instant": true,
      "range": false,
@@ -277,7 +277,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "max by (ci_job)(last_over_time(ci_build_result{ci_result=\"ABORTED\"}[1d]) * 4 or last_over_time(ci_build_result{ci_result=\"FAILURE\"}[1d]) * 3 or last_over_time(ci_build_result{ci_result=\"UNSTABLE\"}[1d]) * 2 or last_over_time(ci_build_result{ci_result=\"SUCCESS\"}[1d]) * 1)",
+     "expr": "max by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"ABORTED\"}[1d]) * 4 or last_over_time(ci_build_result{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"FAILURE\"}[1d]) * 3 or last_over_time(ci_build_result{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"UNSTABLE\"}[1d]) * 2 or last_over_time(ci_build_result{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"SUCCESS\"}[1d]) * 1)",
      "legendFormat": "{{ci_job}}",
      "instant": false,
      "range": true,
@@ -366,7 +366,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "sum by (ci_job)(last_over_time(ci_build_duration_seconds{ci_result=\"ABORTED\"}[$__range])) / 3600",
+     "expr": "sum by (ci_job)(last_over_time(ci_build_duration_seconds{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"ABORTED\"}[$__range])) / 3600",
      "legendFormat": "{{ci_job}}",
      "instant": true,
      "range": false,
@@ -414,7 +414,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "sum by (ci_job)(count_over_time(ci_build_result{ci_result=\"ABORTED\"}[1d]))",
+     "expr": "sum by (ci_job)(count_over_time(ci_build_result{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_result=\"ABORTED\"}[1d]))",
      "legendFormat": "{{ci_job}}",
      "instant": false,
      "range": true,
@@ -470,7 +470,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "max_over_time(ci_package_duration_seconds{ci_state=\"Unfinished\"}[$__range])",
+     "expr": "max_over_time(ci_package_duration_seconds{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\",ci_state=\"Unfinished\"}[$__range])",
      "legendFormat": "",
      "instant": true,
      "range": false,
@@ -492,7 +492,6 @@
        "Time": true,
        "__name__": true,
        "job": true,
-       "ci_job": true,
        "ci_state": true,
        "ci_prev_build": true,
        "ci_status": true,
@@ -589,7 +588,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "topk(25, count by (ci_test_class, ci_test)(last_over_time(ci_test_failure[$__range])))",
+     "expr": "topk(25, count by (ci_test_class, ci_test)(last_over_time(ci_test_failure{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\"}[$__range])))",
      "legendFormat": "",
      "instant": true,
      "range": false,
@@ -667,7 +666,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "last_over_time(ci_build_duration_seconds[$__interval]) / 3600",
+     "expr": "last_over_time(ci_build_duration_seconds{ci_server=\"ci\", ci_job!~\"ci_.*|test_.*\"}[$__interval]) / 3600",
      "legendFormat": "{{ci_job}} #{{ci_build}}",
      "instant": false,
      "range": true,

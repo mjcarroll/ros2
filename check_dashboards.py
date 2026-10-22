@@ -14,8 +14,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-GRAFANA = 'http://localhost:3000/api/datasources/proxy/uid/prometheus/api/v1'
-SUBST = {'$job_a': 'nightly_win_rel', '$job_b': 'nightly_linux_release', '$build_n': '3955', '$job': 'nightly_win_rel', '$package': 'launch_testing_ros', '$build': '.+',
+GRAFANA = 'http://localhost:3300/api/datasources/proxy/uid/prometheus/api/v1'
+SUBST = {'$job_a': 'nightly_win_rel', '$job_b': 'nightly_linux_release', '$build_n': '3955', '$job': 'nightly_win_rel', '$package': 'launch_testing_ros', '$build': '.+', '$server': 'build',
          '$__range': '30d', '$__interval': '1d', '$__rate_interval': '1d'}
 
 

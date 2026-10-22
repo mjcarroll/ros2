@@ -1,0 +1,541 @@
+{
+ "uid": "ros2-ci-buildfarm",
+ "title": "Build farm health",
+ "description": "Live queue and agent status for ci.ros2.org and build.ros2.org, polled by buildfarm.py (point-in-time, not reconstructed from console logs).",
+ "schemaVersion": 39,
+ "version": 3,
+ "timezone": "utc",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "tags": [
+  "ros2",
+  "ci"
+ ],
+ "panels": [
+  {
+   "type": "stat",
+   "title": "Agents",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_agents_total{ci_server=\"$server\"}[$__range])",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 1
+  },
+  {
+   "type": "stat",
+   "title": "Agents offline",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_agents_offline{ci_server=\"$server\"}[$__range])",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 6,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "red"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 2
+  },
+  {
+   "type": "stat",
+   "title": "Queue depth now",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_queue_depth{ci_server=\"$server\"}[$__range])",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 3
+  },
+  {
+   "type": "stat",
+   "title": "Oldest queue wait",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_queue_oldest_wait_seconds{ci_server=\"$server\"}[$__range])",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "noValue": "0",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 4
+  },
+  {
+   "type": "timeseries",
+   "title": "Queue depth over time",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_queue_depth{ci_server=\"$server\"}[$__interval])",
+     "legendFormat": "queue depth",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "points",
+      "pointSize": 9,
+      "showPoints": "always",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 5
+  },
+  {
+   "type": "timeseries",
+   "title": "Oldest item wait (minutes)",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_queue_oldest_wait_seconds{ci_server=\"$server\"}[$__interval]) / 60",
+     "legendFormat": "oldest wait",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 4,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "m",
+     "custom": {
+      "drawStyle": "points",
+      "pointSize": 9,
+      "showPoints": "always",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 6
+  },
+  {
+   "type": "table",
+   "title": "Agents (latest poll)",
+   "description": "Online = 1, offline = 0 as of the last poll.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_agent_online{ci_server=\"$server\"}[$__range])",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 12,
+    "h": 10
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_job": true,
+       "ci_build": true,
+       "ci_trace_id": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_agent": "Agent",
+       "Value #A": "Online",
+       "Value": "Online"
+      },
+      "indexByName": {
+       "ci_agent": 0
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Agent",
+        "desc": false
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 7
+  },
+  {
+   "type": "bargauge",
+   "title": "Executors per agent",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_agent_executors{ci_server=\"$server\"}[$__range])",
+     "legendFormat": "{{ci_agent}}",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 12,
+    "w": 12,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 8
+  },
+  {
+   "type": "bargauge",
+   "title": "Jobs waiting right now",
+   "description": "Empty if the queue was empty at the last poll.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "topk(20, max by (ci_task)(last_over_time(ci_queue_item_wait_seconds{ci_server=\"$server\"}[$__range])))",
+     "legendFormat": "{{ci_task}}",
+     "instant": true,
+     "range": false,
+     "format": "time_series",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 22,
+    "w": 24,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 9
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "name": "server",
+    "label": "Server",
+    "type": "custom",
+    "query": "ci,build",
+    "current": {
+     "text": "build",
+     "value": "build"
+    },
+    "options": [
+     {
+      "text": "ci",
+      "value": "ci",
+      "selected": false
+     },
+     {
+      "text": "build",
+      "value": "build",
+      "selected": true
+     }
+    ]
+   }
+  ]
+ },
+ "links": [
+  {
+   "type": "dashboards",
+   "tags": [
+    "ros2"
+   ],
+   "title": "ROS 2 CI dashboards",
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ]
+}

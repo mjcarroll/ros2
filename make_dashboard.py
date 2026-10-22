@@ -96,9 +96,10 @@ class Panels:
                 {'id': 'custom.cellOptions', 'value': {'type': 'color-text'}},
                 {'id': 'color', 'value': {'mode': 'fixed', 'fixedColor': 'blue'}}]})
         transformations = [{'id': 'organize', 'options': {
-            'excludeByName': {k: True for k in ('Time', '__name__', 'job', 'ci_job')} | {
-                k: True for k in ('ci_agent', 'ci_build', 'ci_trace_id', 'ci_state', 'ci_prev_build',
-                                  'ci_status', 'ci_first_failed_build') if k not in columns},
+            'excludeByName': {k: True for k in ('Time', '__name__', 'job')} | {
+                k: True for k in ('ci_job', 'ci_agent', 'ci_build', 'ci_trace_id', 'ci_state',
+                                  'ci_prev_build', 'ci_status', 'ci_first_failed_build')
+                if k not in columns},
             'renameByName': {**rename, 'Value #A': value_name, 'Value': value_name},
             'indexByName': {c: i for i, c in enumerate(columns)}}}]
         if sort:
@@ -322,18 +323,23 @@ def agents():
 
 def matrix():
     p = Panels()
-    A = 'ci_build_result'
-    count = lambda sel='': f'count by (ci_job)(last_over_time({A}{sel}[$__range]))'  # noqa: E731
+    # Scoped to ci.ros2.org: build.ros2.org's infra/check jobs share the same metric names but
+    # are not nightlies, and would otherwise show up mixed into this scorecard. ci_* jobs are
+    # on-demand (PR-triggered via ci_launcher); test_* jobs validate those job definitions
+    # rather than running on a schedule. Neither belongs in the nightly scorecard.
+    N = 'ci_server="ci", ci_job!~"ci_.*|test_.*"'
+    count = lambda extra='': (  # noqa: E731
+        f'count by (ci_job)(last_over_time(ci_build_result{{{N}{extra}}}[$__range]))')
     queries = [
         ('A', count(), 'Builds'),
-        ('B', count('{ci_result="SUCCESS"}'), 'Green'),
-        ('C', count('{ci_result="UNSTABLE"}'), 'Unstable'),
-        ('D', count('{ci_result="FAILURE"}'), 'Failed'),
-        ('E', count('{ci_result="ABORTED"}'), 'Aborted'),
-        ('F', 'quantile by (ci_job)(0.5, last_over_time(ci_build_duration_seconds[$__range])) / 60',
-         'Median min'),
-        ('G', 'sum by (ci_job)(last_over_time(ci_build_duration_seconds{ci_result="ABORTED"}'
-              '[$__range])) / 3600', 'Hours lost to aborts'),
+        ('B', count(',ci_result="SUCCESS"'), 'Green'),
+        ('C', count(',ci_result="UNSTABLE"'), 'Unstable'),
+        ('D', count(',ci_result="FAILURE"'), 'Failed'),
+        ('E', count(',ci_result="ABORTED"'), 'Aborted'),
+        ('F', f'quantile by (ci_job)(0.5, last_over_time(ci_build_duration_seconds{{{N}}}'
+              '[$__range])) / 60', 'Median min'),
+        ('G', f'sum by (ci_job)(last_over_time(ci_build_duration_seconds{{{N},'
+              'ci_result="ABORTED"}[$__range])) / 3600', 'Hours lost to aborts'),
     ]
     threshold = lambda name, color: {  # noqa: E731
         'matcher': {'id': 'byName', 'options': name}, 'properties': [
@@ -360,7 +366,7 @@ def matrix():
                    {'id': 'color', 'value': {'mode': 'fixed', 'fixedColor': 'green'}}]}]},
            'options': {'showHeader': True}})
     worst = ' or '.join(
-        f'last_over_time(ci_build_result{{ci_result="{r}"}}[@W]) * {n}'
+        f'last_over_time(ci_build_result{{{N},ci_result="{r}"}}[@W]) * {n}'
         for n, r in ((4, 'ABORTED'), (3, 'FAILURE'), (2, 'UNSTABLE'), (1, 'SUCCESS')))
     p.add({'type': 'status-history', 'title': 'Worst result per job per day', 'datasource': PROM,
            'description': 'Green = SUCCESS, yellow = UNSTABLE, orange = FAILURE, red = ABORTED. '
@@ -380,27 +386,86 @@ def matrix():
            'options': {'showValue': 'never', 'rowHeight': 0.9, 'legend': {'showLegend': False},
                        'tooltip': {'mode': 'single'}}})
     p.bargauge('Hours lost to aborted builds, by job',
-               'sum by (ci_job)(last_over_time(ci_build_duration_seconds{ci_result="ABORTED"}[$__range]))'
-               ' / 3600', '{{ci_job}}', 0, 23, 12, 9, unit='h',
+               f'sum by (ci_job)(last_over_time(ci_build_duration_seconds{{{N},ci_result="ABORTED"}}'
+               '[$__range])) / 3600', '{{ci_job}}', 0, 23, 12, 9, unit='h',
                description='Time spent in builds that ended at the 600 minute limit.')
     p.bars('Aborted builds per day, by job',
-           'sum by (ci_job)(count_over_time(ci_build_result{ci_result="ABORTED"}[@W]))', '{{ci_job}}',
-           12, 23, 12, 9, 'short', window='1d', interval='1d')
+           f'sum by (ci_job)(count_over_time(ci_build_result{{{N},ci_result="ABORTED"}}[@W]))',
+           '{{ci_job}}', 12, 23, 12, 9, 'short', window='1d', interval='1d')
     p.table('Hangs and cut-off packages across all jobs - click "Open trace"',
-            'max_over_time(ci_package_duration_seconds{ci_state="Unfinished"}[$__range])',
+            f'max_over_time(ci_package_duration_seconds{{{N},ci_state="Unfinished"}}[$__range])',
             0, 32, 24, 8, ['ci_job', 'ci_build', 'ci_package', 'ci_phase', 'ci_agent', 'ci_trace_id'],
             {**BUILD_RENAME, 'ci_job': 'Job'}, 'Packages still running when a build ended. A package that '
             'shows up in several jobs points at the package, not the platform.', sort=('Build', True),
             trace_link_column=True, value_name='Seconds', unit='s')
     p.table('Most frequently failing tests across all jobs',
-            'topk(25, count by (ci_test_class, ci_test)(last_over_time(ci_test_failure[$__range])))',
+            f'topk(25, count by (ci_test_class, ci_test)(last_over_time(ci_test_failure{{{N}}}[$__range])))',
             0, 40, 24, 10, ['ci_test_class', 'ci_test'],
             {'ci_test_class': 'Suite', 'ci_test': 'Test'}, 'Number of builds, over every job, in which the '
             'test failed.', sort=('Builds failed', True), value_name='Builds failed')
-    p.points('Build duration by job (hours)', 'ci_build_duration_seconds', '{{ci_job}} #{{ci_build}}',
-             0, 50, 24, 10, 'h', 'Points at 10 hours are the aborted builds.', scale=' / 3600')
+    p.points('Build duration by job (hours)', f'ci_build_duration_seconds{{{N}}}',
+             '{{ci_job}} #{{ci_build}}', 0, 50, 24, 10, 'h',
+             'Points at 10 hours are the aborted builds.', scale=' / 3600')
     write('ros2-ci-matrix', 'All nightlies', p, job=False,
           description='Every nightly job side by side: scorecard, worst result per day, hours lost to hangs.')
+
+
+def ondemand():
+    p = Panels()
+    # ci_* jobs run on demand, fanned out by ci_launcher per PR comment/click; test_ci_* are the
+    # same fan-out for validating the job definitions themselves. Neither is a scheduled nightly.
+    OD = 'ci_server="ci", ci_job=~"ci_.*|test_ci_.*"'
+    ONDEMAND_RENAME = {**BUILD_RENAME, 'ci_job': 'Job', 'ci_requested_by': 'Requested by',
+                       'ci_target_package': 'Target package(s)'}
+    count = lambda extra='': (  # noqa: E731
+        f'count by (ci_job)(last_over_time(ci_build_result{{{OD}{extra}}}[$__range]))')
+    queries = [
+        ('A', count(), 'Builds'),
+        ('B', count(',ci_result="SUCCESS"'), 'Green'),
+        ('C', count(',ci_result="UNSTABLE"'), 'Unstable'),
+        ('D', count(',ci_result="FAILURE"'), 'Failed'),
+        ('E', count(',ci_result="ABORTED"'), 'Aborted'),
+    ]
+    threshold = lambda name, color: {  # noqa: E731
+        'matcher': {'id': 'byName', 'options': name}, 'properties': [
+            {'id': 'custom.cellOptions', 'value': {'type': 'color-background'}},
+            {'id': 'thresholds', 'value': {'mode': 'absolute', 'steps': [
+                {'color': 'transparent', 'value': None}, {'color': color, 'value': 1}]}}]}
+    p.add({'type': 'table', 'title': 'On-demand scorecard', 'datasource': PROM,
+           'description': 'One row per ci_*/test_ci_* job over the selected range.',
+           'targets': [Panels.target(expr, instant=True, table=True, ref=ref) for ref, expr, _ in queries],
+           'gridPos': {'x': 0, 'y': 0, 'w': 24, 'h': 10},
+           'transformations': [
+               {'id': 'joinByField', 'options': {'byField': 'ci_job', 'mode': 'outer'}},
+               {'id': 'organize', 'options': {
+                   'excludeByName': {f'Time {i}': True for i in range(1, 5)} | {'Time': True},
+                   'renameByName': {'ci_job': 'Job', **{f'Value #{ref}': name for ref, _, name in queries}},
+                   'indexByName': {'ci_job': 0, **{f'Value #{ref}': i + 1
+                                                   for i, (ref, _, _) in enumerate(queries)}}}},
+               {'id': 'sortBy', 'options': {'sort': [{'field': 'Job', 'desc': False}]}}],
+           'fieldConfig': {'defaults': {'decimals': 1, 'noValue': '0'}, 'overrides': [
+               threshold('Aborted', 'red'), threshold('Failed', 'orange'),
+               {'matcher': {'id': 'byName', 'options': 'Green'}, 'properties': [
+                   {'id': 'custom.cellOptions', 'value': {'type': 'color-text'}},
+                   {'id': 'color', 'value': {'mode': 'fixed', 'fixedColor': 'green'}}]}]},
+           'options': {'showHeader': True}})
+    p.bars('On-demand builds per day, by requester',
+           f'sum by (ci_requested_by)(count_over_time(ci_build_result{{{OD}}}[@W]))',
+           '{{ci_requested_by}}', 0, 10, 12, 9, 'short', window='1d', interval='1d',
+           description='Who clicked "Build" on ci_launcher (or test_ci_launcher); resolved one hop '
+                       'up for the ci_linux/ci_windows/... builds it fans out to.')
+    p.bars('On-demand builds per day, by job',
+           f'sum by (ci_job)(count_over_time(ci_build_result{{{OD}}}[@W]))',
+           '{{ci_job}}', 12, 10, 12, 9, 'short', window='1d', interval='1d')
+    p.table('Builds - click "Open trace" for the build timeline',
+            f'last_over_time(ci_build_result{{{OD}}}[$__range])', 0, 19, 24, 12,
+            ['ci_job', 'ci_build', 'ci_result', 'ci_requested_by', 'ci_target_package', 'ci_trace_id'],
+            ONDEMAND_RENAME, 'One row per on-demand build. Target package(s) comes from '
+            '--packages-above(-and-dependencies) in CI_BUILD_ARGS.', sort=('Build', True),
+            trace_link_column=True)
+    write('ros2-ci-ondemand', 'On-demand builds', p, job=False,
+          description='ci_*/test_ci_* builds that ci_launcher fans out per PR: trends, who requested '
+                      'them, their scope, and their results.')
 
 
 BUILD_VAR = query_var('build_n', 'Build', 'label_values(ci_build_result{ci_job="$job"}, ci_build)', '', sort=4)
@@ -516,14 +581,52 @@ def errors():
           description='Recurring and new error messages from the console.')
 
 
+SERVER_VAR = {'name': 'server', 'label': 'Server', 'type': 'custom', 'query': 'ci,build',
+              'current': {'text': 'build', 'value': 'build'},
+              'options': [{'text': s, 'value': s, 'selected': s == 'build'} for s in ('ci', 'build')]}
+
+
+def buildfarm():
+    # Queue depth, wait time and agent status, polled live by buildfarm.py (not reconstructed
+    # from console logs: Jenkins keeps no queue history). check_agents / ci__infra_* job results
+    # (ordinary builds, fetched like any other job) show up in "ROS 2 CI overview" / "CI health"
+    # once $job is set to one of them, so they are not duplicated here.
+    p = Panels()
+    S = 'ci_server="$server"'
+    w = 6
+    p.stat('Agents', f'last_over_time(ci_agents_total{{{S}}}[$__range])', 0, 0, w, 4)
+    p.stat('Agents offline', f'last_over_time(ci_agents_offline{{{S}}}[$__range])', w, 0, w, 4,
+           color='red')
+    p.stat('Queue depth now', f'last_over_time(ci_queue_depth{{{S}}}[$__range])', 2 * w, 0, w, 4)
+    p.stat('Oldest queue wait', f'last_over_time(ci_queue_oldest_wait_seconds{{{S}}}[$__range])',
+           3 * w, 0, w, 4, unit='s')
+    p.points('Queue depth over time', f'ci_queue_depth{{{S}}}', 'queue depth', 0, 4, 12, 8, 'short')
+    p.points('Oldest item wait (minutes)', f'ci_queue_oldest_wait_seconds{{{S}}}', 'oldest wait',
+             12, 4, 12, 8, 'm', scale=' / 60')
+    p.table('Agents (latest poll)', f'last_over_time(ci_agent_online{{{S}}}[$__range])',
+            0, 12, 12, 10, ['ci_agent'], {'ci_agent': 'Agent'}, 'Online = 1, offline = 0 as of '
+            'the last poll.', sort=('Agent', False), value_name='Online')
+    p.bargauge('Executors per agent', f'last_over_time(ci_agent_executors{{{S}}}[$__range])',
+               '{{ci_agent}}', 12, 12, 12, 10, unit='short')
+    p.bargauge('Jobs waiting right now',
+               f'topk(20, max by (ci_task)(last_over_time(ci_queue_item_wait_seconds{{{S}}}'
+               '[$__range])))', '{{ci_task}}', 0, 22, 24, 10, unit='s',
+               description='Empty if the queue was empty at the last poll.')
+    write('ros2-ci-buildfarm', 'Build farm health', p, job=False, extra_vars=[SERVER_VAR],
+          description='Live queue and agent status for ci.ros2.org and build.ros2.org, polled by '
+          'buildfarm.py (point-in-time, not reconstructed from console logs).')
+
+
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     regressions()
     performance()
     errors()
     matrix()
+    ondemand()
     overview()
     health()
     time_breakdown()
     tests()
     agents()
+    buildfarm()

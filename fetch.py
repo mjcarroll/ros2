@@ -18,7 +18,7 @@ BUILD_TREE = (
     'number,result,building,timestamp,duration,builtOn,fullDisplayName,'
     'actions[queuingDurationMillis,waitingDurationMillis,buildableDurationMillis,'
     'executingTimeMillis,totalDurationMillis,failCount,skipCount,totalCount,'
-    'parameters[name,value]]')
+    'parameters[name,value],causes[upstreamProject,upstreamBuild,userId,userName]]')
 TEST_TREE = (
     'failCount,passCount,skipCount,'
     'suites[name,duration,cases[className,name,status,duration,age,errorDetails]]')

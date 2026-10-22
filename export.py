@@ -25,7 +25,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 OTLP = 'http://localhost:4318'
-GRAFANA = 'http://localhost:3000/api/datasources/proxy/uid'
+GRAFANA = 'http://localhost:3300/api/datasources/proxy/uid'
 BATCH = 1000
 
 LINE = re.compile(r'^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})  ?(.*)$')
@@ -43,9 +43,15 @@ MIN_GROUP_TESTS = 10   # test names seen in at least this many packages (cpplint
 ERRORISH = re.compile(
     r'\[ERROR\]|\berror:|\*\*\*(Failed|Timeout|Exception)|Windows fatal exception|access violation|'
     r'Build timed out|Traceback \(most recent|\bFAILED\b')
-MAX_LOG_LINES = 3000
 PKG_MIN_SECONDS = 60.0   # shorter finished packages are folded into counts on their phase span
 TEST_MIN_SECONDS = 30.0  # same for passing tests; failed tests always get a span
+PACKAGES_ABOVE = re.compile(r'--packages-above(?:-and-dependencies)?\s+(.+?)(?:\s+--\S|\s*$)')
+
+
+def trigger_user(info):
+    """The human who clicked "Build" (UserIdCause), if any, directly on this build."""
+    return next((c['userId'] for a in info.get('actions', []) for c in a.get('causes', [])
+                 if c.get('userId')), None)
 
 
 def signature(text):
@@ -102,9 +108,9 @@ def attrs(mapping):
 
 class Builder:
 
-    def __init__(self, server, job, number, info, console, report, prev=None):
+    def __init__(self, server, job, number, info, console, report, prev=None, cache=None):
         self.server, self.job, self.number = server, job, number
-        self.prev = prev
+        self.prev, self.cache = prev, cache
         self.repos = {}
         self.info, self.report = info, report
         self.trace_id = hex_id(f'{server}/{job}/{number}', 16)
@@ -118,7 +124,7 @@ class Builder:
     def span_id(self, *parts):
         return hex_id(self.trace_id + '/' + '/'.join(parts), 8)
 
-    def span(self, name, start, end, parent, key, attributes=None, error=False):
+    def span(self, name, start, end, parent, key, attributes=None, error=False, links=None):
         span = {
             'traceId': self.trace_id, 'spanId': self.span_id(key), 'name': name, 'kind': 1,
             'startTimeUnixNano': str(start), 'endTimeUnixNano': str(max(end, start)),
@@ -127,6 +133,8 @@ class Builder:
         }
         if parent:
             span['parentSpanId'] = parent
+        if links:
+            span['links'] = links
         self.spans.append(span)
         self.by_id[span['spanId']] = span
         return span['spanId']
@@ -146,7 +154,6 @@ class Builder:
         output_pkg = None
         tests = []                       # (package, number, name, status, seconds)
         hashes, urls, in_hashes, repo = {}, {}, False, None
-        error_lines = 0
         signatures = collections.Counter()
         last_ts = self.start
 
@@ -154,6 +161,13 @@ class Builder:
             if open_sub and open_sub[0] in ('build', 'test'):
                 return open_sub[0]
             return 'other'
+
+        def current_section():
+            if open_sub:
+                return open_sub[0]
+            if open_section:
+                return open_section[0]
+            return None
 
         for raw in console:
             m = LINE.match(raw.rstrip('\r\n'))
@@ -196,6 +210,8 @@ class Builder:
             m = STARTING.match(text)
             if m:
                 running[(m.group(1), phase_of(ts))] = ts
+                self.logs.append((ts, 'INFO', text[:2000],
+                                  {'_ctx': ('pkg', m.group(1), phase_of(ts))}))
                 continue
             m = FINISHED.match(text)
             if m:
@@ -204,6 +220,8 @@ class Builder:
                 start = running.pop((package, phase), None)
                 if start is not None:
                     packages[(package, phase)] = (start, ts, state, code)
+                self.logs.append((ts, 'INFO' if state == 'Finished' else 'ERROR', text[:2000],
+                                  {'_ctx': ('pkg', package, phase)}))
                 output_pkg = None
                 continue
             m = OUTPUT.match(text)
@@ -213,13 +231,18 @@ class Builder:
             m = CTEST.match(text)
             if m and output_pkg:
                 tests.append((output_pkg, int(m.group(1)), m.group(2), m.group(3), float(m.group(4))))
+                self.logs.append((ts, 'INFO', text[:2000],
+                                  {'_ctx': ('pkg', output_pkg, phase_of(ts))}))
                 continue
-            if ERRORISH.search(text):
+            error = bool(ERRORISH.search(text))
+            if error:
                 signatures[signature(text)] += 1
-                if error_lines < MAX_LOG_LINES:
-                    error_lines += 1
-                    ctx = ('pkg', output_pkg, phase_of(ts)) if output_pkg else ('phase', phase_of(ts))
-                    self.logs.append((ts, 'ERROR', text[:2000], {'_ctx': ctx}))
+            if output_pkg:
+                ctx = ('pkg', output_pkg, phase_of(ts))
+            else:
+                section = current_section()
+                ctx = ('phase', section) if section else None
+            self.logs.append((ts, 'ERROR' if error else 'INFO', text[:2000], {'_ctx': ctx}))
         if open_section:
             sections.append((open_section[0], open_section[1], self.end))
         if open_sub:
@@ -230,15 +253,45 @@ class Builder:
         result = self.info.get('result') or 'UNKNOWN'
         params = {p['name']: p['value'] for a in self.info.get('actions', [])
                   for p in a.get('parameters', []) if p['name'] in (
-                      'CI_BRANCH_TO_TEST', 'CI_CMAKE_BUILD_TYPE', 'CI_ROS_DISTRO', 'CI_USE_CONNEXTDDS')}
+                      'CI_BRANCH_TO_TEST', 'CI_CMAKE_BUILD_TYPE', 'CI_ROS_DISTRO', 'CI_USE_CONNEXTDDS',
+                      'CI_UBUNTU_DISTRO', 'CI_BUILD_ARGS')}
         queued = next((a.get('queuingDurationMillis') for a in self.info.get('actions', [])
                        if a.get('queuingDurationMillis') is not None), None)
         tests_summary = next((a for a in self.info.get('actions', []) if a.get('totalCount')), {})
+        upstream = next((c for a in self.info.get('actions', []) for c in a.get('causes', [])
+                         if c.get('upstreamProject')), None)
+        # Who clicked "Build": set directly, or (for jobs launched by ci_launcher) one hop up.
+        requested_by = trigger_user(self.info)
+        if requested_by is None and upstream and self.cache:
+            upstream_path = os.path.join(self.cache, self.server, upstream['upstreamProject'],
+                                         str(upstream['upstreamBuild']), 'build.json')
+            if os.path.exists(upstream_path):
+                with open(upstream_path) as f:
+                    requested_by = trigger_user(json.load(f))
+        target_package = None
+        m = PACKAGES_ABOVE.search(params.get('CI_BUILD_ARGS', ''))
+        if m:
+            target_package = m.group(1).strip()[:200]
+        links = None
+        if upstream:
+            upstream_trace = hex_id(f'{self.server}/{upstream["upstreamProject"]}/'
+                                    f'{upstream["upstreamBuild"]}', 16)
+            links = [{'traceId': upstream_trace,
+                     'spanId': hex_id(upstream_trace + '/build', 8)}]
         self.span(f'{self.job} #{self.number}', self.start, self.end, None, 'build', {
             **common, 'ci.result': result, 'ci.agent': self.info.get('builtOn'),
             'ci.queue_ms': queued, 'ci.tests.failed': tests_summary.get('failCount'),
             'ci.tests.total': tests_summary.get('totalCount'),
-            **{f'ci.param.{k}': v for k, v in params.items()}}, error=result in ('FAILURE', 'ABORTED'))
+            'ci.upstream_job': upstream and upstream['upstreamProject'],
+            'ci.upstream_build': upstream and upstream['upstreamBuild'],
+            'ci.requested_by': requested_by, 'ci.target_package': target_package,
+            **{f'ci.param.{k}': v for k, v in params.items()}},
+            error=result in ('FAILURE', 'ABORTED'), links=links)
+        if upstream:
+            self.metrics.append(('ci_triggered_by', self.end, 1.0, {
+                'ci_build': self.number, 'ci_trace_id': self.trace_id, 'ci_result': result,
+                'ci_upstream_job': upstream['upstreamProject'],
+                'ci_upstream_build': upstream['upstreamBuild']}))
         if queued:
             self.span('queue', self.start - queued * 1_000_000, self.start, self.root_id, 'queue',
                       common)
@@ -315,6 +368,10 @@ class Builder:
                 **common, 'ci.package': package, 'ci.test': name, 'ci.test.status': status,
                 'ci.test.seconds': seconds, 'ci.timing': 'estimated'}, error=bad)
             test_spans.setdefault(name, test_span)
+            # So every real span has at least one log line, even a slow-but-passing test.
+            self.logs.append((finish, 'ERROR' if bad else 'INFO',
+                              f'test {name}: {status} ({seconds:.1f}s)',
+                              {'ci.package': package, 'ci.test': name, '_ctx': ('test', name)}))
         for package, mapping in agg.items():
             self.annotate(package_ids[(package, 'test')][0], mapping)
         for name, total in name_total.most_common(60):
@@ -349,7 +406,7 @@ class Builder:
                 return entry[0] if entry else sub_ids.get(ctx[2], self.root_id)
             if ctx[0] == 'test':
                 return test_spans.get(ctx[1], self.root_id)
-            return sub_ids.get(ctx[1], self.root_id)
+            return sub_ids.get(ctx[1]) or top.get(ctx[1], self.root_id)
 
         for record in self.logs:
             extra = record[3]
@@ -379,9 +436,10 @@ class Builder:
                                  {'ci_signature': sig, 'ci_build': self.number}))
         self.metrics += [
             ('ci_build_duration_seconds', end, (self.end - self.start) / 1e9,
-             {'ci_result': result, 'ci_build': self.number}),
+             {'ci_result': result, 'ci_build': self.number, 'ci_requested_by': requested_by}),
             ('ci_build_result', end, 1.0,
-             {'ci_result': result, 'ci_build': self.number, 'ci_trace_id': self.trace_id}),
+             {'ci_result': result, 'ci_build': self.number, 'ci_trace_id': self.trace_id,
+              'ci_requested_by': requested_by, 'ci_target_package': target_package}),
         ]
         if queued is not None:
             self.metrics.append(('ci_build_queue_seconds', end, queued / 1000, {}))
@@ -413,7 +471,8 @@ class Builder:
         for name, ts, value, labels in self.metrics:
             by_name.setdefault(name, []).append({
                 'timeUnixNano': str(ts), 'asDouble': value,
-                'attributes': attrs({'ci_job': self.job, 'ci_agent': self.agent, **labels})})
+                'attributes': attrs({'ci_server': self.server, 'ci_job': self.job,
+                                     'ci_agent': self.agent, **labels})})
         return {'resourceMetrics': [{'resource': self.resource(), 'scopeMetrics': [{'metrics': [
             {'name': n, 'gauge': {'dataPoints': pts}} for n, pts in by_name.items()]}]}]}
 
@@ -438,8 +497,11 @@ def load(cache, server, job, number):
     report = None
     path = os.path.join(directory, 'testReport.json.gz')
     if os.path.exists(path):
-        with gzip.open(path, 'rt', encoding='utf-8', errors='replace') as f:
-            report = json.load(f)
+        try:
+            with gzip.open(path, 'rt', encoding='utf-8', errors='replace') as f:
+                report = json.load(f)
+        except json.JSONDecodeError:
+            pass  # build.ros2.org can return an HTML bot-challenge page with 200 instead of a 404
     return info, report, gzip.open(os.path.join(directory, 'console.log.gz'), 'rt',
                                    encoding='utf-8', errors='replace')
 
@@ -567,15 +629,22 @@ def _main():
             if key in state and not (args.force or args.dry_run or only_one_signal or args.logs_only):
                 print(f'{job} #{number}: already exported, skipping')
                 continue
-            if not os.path.exists(os.path.join(root, str(number), 'build.json')):
+            build_path = os.path.join(root, str(number), 'build.json')
+            if not os.path.exists(build_path):
                 print(f'{job} #{number}: incomplete in cache (no build.json), skipping')
+                continue
+            build_age_days = (time.time() * 1000 - json.load(open(build_path))['timestamp']) / 86_400_000
+            if build_age_days > args.max_age_days and not args.include_stale:
+                print(f'{job} #{number}: {build_age_days:.0f} days old, skipping (stale build; '
+                      '--include-stale to override; Prometheus rejects samples past its '
+                      'out_of_order_time_window regardless)')
                 continue
             print(f'{job} #{number}')
             try:
                 info, report, console = load(args.cache, args.server, job, number)
                 with console:
                     builder = Builder(args.server, job, number, info, console, report,
-                                      prev=load_prev_repos(root, number))
+                                      prev=load_prev_repos(root, number), cache=args.cache)
                 save_repos(root, number, builder.repos)
                 export_build(builder, args.dry_run, args.metrics_only, args.traces_only, args.logs_only)
             except Exception as e:  # noqa: B902

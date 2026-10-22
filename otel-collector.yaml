@@ -16,6 +16,9 @@ exporters:
       insecure: true
   otlphttp/loki:
     endpoint: http://loki:3100/otlp
+    sending_queue:
+      num_consumers: 1
+      queue_size: 2000
   prometheusremotewrite:
     endpoint: http://prometheus:9090/api/v1/write
 

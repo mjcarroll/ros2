@@ -80,9 +80,34 @@ Telemetry model:
 1. Local stack (docker compose: Collector, Tempo, Loki, Prometheus, Grafana) plus collector for
    `nightly_win_rel`, `nightly_linux_release`, `ci_windows`. Dashboards: slowest packages, builds that timed
    out and what was open, failure rate by agent, queue wait.
-2. build.ros2.org: queue, agents, bulk per-distro build results; decide which of the 66k jobs matter.
+2. build.ros2.org: decided to track infra/queue/agent health only, not the 66k per-package jobs (not
+   worth the crawl; see below).
 3. Correlate with GitHub commits; hang/regression alerts.
 4. Hosting and retention conversation with whoever runs the infra, if it should outlive a laptop.
+
+## build.ros2.org: infra/queue/agent health only (decided)
+
+Not the 66k per-package jobs: never worth crawling per the scale note above, and no per-package
+dashboard was asked for. Instead:
+
+- `buildfarm.py --server build` (and `ci`, for the same reason ci.ros2.org's queue wasn't tracked
+  either): polls `/queue/api/json` and `/computer/api/json` and pushes point-in-time gauges
+  (`ci_queue_depth`, `ci_queue_oldest_wait_seconds`, `ci_queue_item_wait_seconds` by task,
+  `ci_agent_online`/`ci_agent_idle`/`ci_agent_executors`, `ci_agents_total`, `ci_agents_offline`).
+  No cache, no backfill: Jenkins keeps no queue history, so this only has meaning run on an interval.
+- `check_agents` / `ci__infra_*`: ordinary jobs, so they go through the existing fetch.py/export.py
+  pipeline unchanged (`fetch.py --server build --job check_agents --match ci__infra_`). They show up
+  in the existing per-job dashboards ("ROS 2 CI overview", "CI health") once `$job` is set to one of
+  them; the exact names are a guess from convention and need confirming against a real token
+  (see Open questions).
+- New dashboard `ros2-ci-buildfarm` ("Build farm health"): queue depth/wait and agent status, with a
+  `$server` (ci/build) picker instead of `$job`, since this is server-level, not per-job.
+- `ci_build_result`/`ci_build_duration_seconds`/etc. now carry a `ci_server` label (previously only
+  traces/logs had it via `service.name`). The "All nightlies" matrix dashboard is scoped to
+  `ci_server="ci"` so build.ros2.org's infra jobs don't show up mixed into a scorecard titled
+  "nightlies".
+- `refresh.py` now also runs the build-server fetch/export and both buildfarm snapshots; exit code 0
+  requires all of them to succeed, same as the ci.ros2.org steps.
 
 ## Open questions
 
@@ -90,7 +115,12 @@ Telemetry model:
 - How far back do builds and Timestamper data go? Jenkins keeps about 100 builds per job (test history showed ~85-100).
 - Is Timestamper enabled on every job, and on build.ros2.org?
 - What does the JavaMelody `/monitoring` endpoint expose to a user token?
-- Which build.ros2.org jobs are worth tracking (per distro/package vs infra only)?
+- ~~Which build.ros2.org jobs are worth tracking (per distro/package vs infra only)?~~ Decided:
+  infra/queue/agent only (see above).
+- ~~Are `check_agents` and the `ci__infra_*` prefix the real job names on build.ros2.org?~~ Confirmed
+  2026-10-21 with a token: `check_agents`, `ci__infra_ubuntu_jammy_amd64`,
+  `ci__infra_ubuntu_noble_amd64`, `ci__infra_ubuntu_resolute_amd64` — exactly 4 jobs, no false
+  positives from the `ci__infra_` prefix against all 66,026 build.ros2.org job names.
 - Where does this run long term?
 
 ## Smoke test results (2026-10-19, local stack, hand-made data via OTLP/HTTP on :4318)
@@ -150,3 +180,40 @@ Telemetry model:
   slow (>= 30 s) tests; the rest are folded into counts on the phase/package span (`--pkg-min-seconds`,
   `--test-min-seconds`). Metrics still cover every package.
 - `--metrics-only`, `--traces-only` and `--logs-only` re-send one signal after wiping that backend's volume.
+
+### More gotchas (2026-10-21)
+
+- build.ros2.org can return an HTML "are you a bot" challenge page with HTTP 200 for `/testReport/api/json`
+  on a job with no test report, instead of Jenkins' usual 404. `export.py`'s loader now treats an
+  undecodable cached test report as "no report" rather than failing the whole build (seen on `check_agents`).
+- Only `ERRORISH` lines were ever sent to Loki, so a span for a package/test that passed cleanly had zero
+  log lines — not a bug exactly, but a real gap against the original plan ("logs... start with
+  severity-tagged lines... Starting/Finished"). `export.py` now logs every console line (INFO, or ERROR on
+  an `ERRORISH` match or non-`Finished` outcome), tagged with the same package/test/section context used
+  for spans, via `span_for`'s existing fallback (extended to also check top-level section spans, not just
+  subsections). Volume is real: a ~5-6h aborted `nightly_win_rel` build is ~245-280k log lines. At that
+  volume the Collector's `otlphttp/loki` exporter's default queue concurrency (>1 consumer) raced a handful
+  of batches out of order into the same stream ("entry too far behind"), even though our client sends
+  strictly sorted and sequential; fixed with `sending_queue.num_consumers: 1` on that exporter in
+  `otel-collector.yaml`.
+- The job-level staleness check (skip export if the *newest* cached build is older than `--max-age-days`)
+  missed jobs with a sparse mix of ages: `test_packaging_linux` etc. had a couple of recent builds plus a
+  few builds **884-1727 days old** sitting in the same cache dir (these are rarely-triggered validation
+  jobs, so build numbers are sparse). The newest build looked fresh, so the job wasn't skipped, but the
+  ancient builds' metric samples were older than Prometheus's `out_of_order_time_window` (8760h = 1 year)
+  and got rejected ("too old sample"), failing verification for the whole job even though the fresh builds
+  exported fine. Added a **per-build** age check (same flags) alongside the existing per-job one.
+- `ci_launcher` (and similar dispatcher jobs) triggers downstream builds via Jenkins' own
+  "trigger other projects" mechanism, which Jenkins records only on the *downstream* build as a
+  `Cause$UpstreamCause` (`upstreamProject`/`upstreamBuild`) — not on the launcher's own build. `fetch.py`'s
+  `BUILD_TREE` now asks for `causes[upstreamProject,upstreamBuild]`; `export.py` turns that into an OTLP
+  span link from the downstream build's root span back to the launcher build's root span (same
+  deterministic trace/span id scheme), plus `ci.upstream_job`/`ci.upstream_build` attributes and a
+  `ci_triggered_by` metric (for a "what did build #N trigger" table). Only takes effect for builds fetched
+  after this change — existing cached builds lack the `causes` field until re-fetched.
+- Grafana's Tempo "Logs for this span" (`tracesToLogsV2.filterBySpanID`) silently returned nothing: Loki only
+  indexes `service_namespace`/`service_instance_id` as real labels (confirmed via `/loki/api/v1/labels`);
+  `trace_id`/`span_id` are structured metadata, and whatever field name Grafana's span-id filter stage adds
+  on top didn't match. Turned it off (`filterBySpanID: false`); the tag-based selector alone (proven working
+  by the "Builds" log panel) is what "Logs for this span" now falls back to — effectively "logs for this
+  build", which matches our per-build (not per-span) Loki stream granularity anyway.

@@ -1,0 +1,482 @@
+{
+ "uid": "ros2-ci-ondemand",
+ "title": "On-demand builds",
+ "description": "ci_*/test_ci_* builds that ci_launcher fans out per PR: trends, who requested them, their scope, and their results.",
+ "schemaVersion": 39,
+ "version": 3,
+ "timezone": "utc",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "tags": [
+  "ros2",
+  "ci"
+ ],
+ "panels": [
+  {
+   "type": "table",
+   "title": "On-demand scorecard",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "description": "One row per ci_*/test_ci_* job over the selected range.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job=~\"ci_.*|test_ci_.*\"}[$__range]))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job=~\"ci_.*|test_ci_.*\",ci_result=\"SUCCESS\"}[$__range]))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "B"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job=~\"ci_.*|test_ci_.*\",ci_result=\"UNSTABLE\"}[$__range]))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "C"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job=~\"ci_.*|test_ci_.*\",ci_result=\"FAILURE\"}[$__range]))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "D"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count by (ci_job)(last_over_time(ci_build_result{ci_server=\"ci\", ci_job=~\"ci_.*|test_ci_.*\",ci_result=\"ABORTED\"}[$__range]))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "E"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 10
+   },
+   "transformations": [
+    {
+     "id": "joinByField",
+     "options": {
+      "byField": "ci_job",
+      "mode": "outer"
+     }
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time 1": true,
+       "Time 2": true,
+       "Time 3": true,
+       "Time 4": true,
+       "Time": true
+      },
+      "renameByName": {
+       "ci_job": "Job",
+       "Value #A": "Builds",
+       "Value #B": "Green",
+       "Value #C": "Unstable",
+       "Value #D": "Failed",
+       "Value #E": "Aborted"
+      },
+      "indexByName": {
+       "ci_job": 0,
+       "Value #A": 1,
+       "Value #B": 2,
+       "Value #C": 3,
+       "Value #D": 4,
+       "Value #E": 5
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Job",
+        "desc": false
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "decimals": 1,
+     "noValue": "0"
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Aborted"
+      },
+      "properties": [
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-background"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "transparent",
+           "value": null
+          },
+          {
+           "color": "red",
+           "value": 1
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Failed"
+      },
+      "properties": [
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-background"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "transparent",
+           "value": null
+          },
+          {
+           "color": "orange",
+           "value": 1
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Green"
+      },
+      "properties": [
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 1
+  },
+  {
+   "type": "timeseries",
+   "title": "On-demand builds per day, by requester",
+   "description": "Who clicked \"Build\" on ci_launcher (or test_ci_launcher); resolved one hop up for the ci_linux/ci_windows/... builds it fans out to.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (ci_requested_by)(count_over_time(ci_build_result{ci_server=\"ci\", ci_job=~\"ci_.*|test_ci_.*\"}[1d]))",
+     "legendFormat": "{{ci_requested_by}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A",
+     "interval": "1d"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 10,
+    "w": 12,
+    "h": 9
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "lineWidth": 1,
+      "barAlignment": 0,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 2
+  },
+  {
+   "type": "timeseries",
+   "title": "On-demand builds per day, by job",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (ci_job)(count_over_time(ci_build_result{ci_server=\"ci\", ci_job=~\"ci_.*|test_ci_.*\"}[1d]))",
+     "legendFormat": "{{ci_job}}",
+     "instant": false,
+     "range": true,
+     "format": "time_series",
+     "refId": "A",
+     "interval": "1d"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 10,
+    "w": 12,
+    "h": 9
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "lineWidth": 1,
+      "barAlignment": 0,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "id": 3
+  },
+  {
+   "type": "table",
+   "title": "Builds - click \"Open trace\" for the build timeline",
+   "description": "One row per on-demand build. Target package(s) comes from --packages-above(-and-dependencies) in CI_BUILD_ARGS.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "last_over_time(ci_build_result{ci_server=\"ci\", ci_job=~\"ci_.*|test_ci_.*\"}[$__range])",
+     "legendFormat": "",
+     "instant": true,
+     "range": false,
+     "format": "table",
+     "refId": "A"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 19,
+    "w": 24,
+    "h": 12
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "ci_agent": true,
+       "ci_state": true,
+       "ci_prev_build": true,
+       "ci_status": true,
+       "ci_first_failed_build": true
+      },
+      "renameByName": {
+       "ci_build": "Build",
+       "ci_trace_id": "Open trace",
+       "ci_result": "Result",
+       "ci_agent": "Agent",
+       "ci_package": "Package",
+       "ci_phase": "Phase",
+       "ci_state": "State",
+       "ci_job": "Job",
+       "ci_requested_by": "Requested by",
+       "ci_target_package": "Target package(s)",
+       "Value #A": "Value",
+       "Value": "Value"
+      },
+      "indexByName": {
+       "ci_job": 0,
+       "ci_build": 1,
+       "ci_result": 2,
+       "ci_requested_by": 3,
+       "ci_target_package": 4,
+       "ci_trace_id": 5
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "Build",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Open trace"
+      },
+      "properties": [
+       {
+        "id": "links",
+        "value": [
+         {
+          "title": "Open build timeline",
+          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22${__value.raw}%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-30d%22%2C%22to%22%3A%22now%22%7D%7D%7D",
+          "targetBlank": true
+         }
+        ]
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 4
+  }
+ ],
+ "templating": {
+  "list": []
+ },
+ "links": [
+  {
+   "type": "dashboards",
+   "tags": [
+    "ros2"
+   ],
+   "title": "ROS 2 CI dashboards",
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ]
+}

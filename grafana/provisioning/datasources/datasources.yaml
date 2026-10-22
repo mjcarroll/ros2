@@ -15,7 +15,9 @@ datasources:
           - key: ci.build
             value: service_instance_id
         filterByTraceID: false
-        filterBySpanID: true
+        filterBySpanID: false
+        customQuery: true
+        query: '{$${__tags}} | span_id=`$${__span.spanId}`'
   - name: Loki
     uid: loki
     type: loki
