@@ -17,6 +17,17 @@ common:
 
 schema_config:
   configs:
+    # Console output occasionally contains a line that coincidentally matches the Jenkins
+    # timestamp-prefix format with a bogus old date (e.g. a test with a fixed/mocked clock), which
+    # export.py's heuristic then reads as that line's real timestamp. Rather than hard-reject those
+    # (previously: "no schema config found for time ..."), give them a valid period to land in.
+    - from: 2006-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_old_
+        period: 24h
     - from: 2024-01-01
       store: tsdb
       object_store: filesystem
@@ -33,3 +44,9 @@ limits_config:
   # Default 4 MB/s throttles a backfill exporting many builds' full console logs back to back.
   ingestion_rate_mb: 64
   ingestion_burst_size_mb: 128
+  # Every log line for one build shares a single stream (by job+build), so the *per-stream* cap
+  # (default 3MB/s) silently drops most of a high-volume build's lines in one push, independent of
+  # the tenant-wide limit above. Loki logs this as "ignored"/"rate limit exceeded", not as a
+  # rejection, so it doesn't match export.py's verify() pattern either (see there for the fix).
+  per_stream_rate_limit: 64MB
+  per_stream_rate_limit_burst: 128MB
